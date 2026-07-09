@@ -25,3 +25,7 @@ ENV/
 # OS cruft
 .DS_Store
 Thumbs.db
+
+# IDE / editor
+.idea/
+.vscode/
