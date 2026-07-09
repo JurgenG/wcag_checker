@@ -6,19 +6,22 @@ order; a clean automated run never implies conformance.
 
 ## Session state — resume here (last worked 2026-07-09)
 
-- **Branch:** `feature/reconcile-258` (branched off `main` after
-  `feature/manual-check` was fast-forward merged). Branch-style
+- **Branch:** `feature/smoke-settle` (branched off `main` after
+  `feature/reconcile-258` was fast-forward merged). Branch-style
   development — start each new step on its own branch off `main`.
 - **Uncommitted on this branch, ready to commit:**
-  - `leak_inspector/wcag/axe_runner.py` — `_CRITERIA_OWNED_ELSEWHERE`
-    drops axe's 2.5.8 so `keyboard_nav` owns it
-  - `leak_inspector/wcag/keyboard_nav.py` — docstring notes the ownership
-  - `tests/test_wcag_axe_runner.py` — ownership tests
+  - `tools/wcag_smoke.py` — `wait_until_settled` waits out client-side
+    redirects before injecting axe (fixes "axe is not defined" on pages
+    that JS-redirect, e.g. belibre.be → /en/); audits/report use the
+    settled URL
+  - `tests/test_wcag_smoke_settle.py` (new) — hermetic settle tests
   - `TODO.md` (this file)
-- **Tests:** full suite green — **376 passing**. Run with
+- **Tests:** full suite green — **380 passing**. Run with
   `. .venv/bin/activate && python -m pytest -q`.
-- **Next build step:** nothing queued. Only a final README/SBOM skim
-  remains as an optional tidy-up; otherwise the tree reflects reality.
+- **Next build step:** nothing queued. Open question raised by the user:
+  the single-page runner is still named `wcag_smoke.py` though it is no
+  longer a throwaway — consider renaming/promoting it. Plus the optional
+  final README/SBOM skim.
 - **Env note:** venv at `.venv`; `axe-selenium-python` is now a declared
   dependency, so a plain `pip install -e .` pulls it in.
 
