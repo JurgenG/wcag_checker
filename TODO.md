@@ -6,18 +6,24 @@ order; a clean automated run never implies conformance.
 
 ## Session state — resume here (last worked 2026-07-09)
 
-- **Branch:** `feature/manual-checklist` (branch-style development from
-  now on — start each new step on its own branch off `main`).
+- **Branch:** `feature/session-runner` (branched off `main` after
+  `feature/manual-checklist` was fast-forward merged). Branch-style
+  development — start each new step on its own branch off `main`.
 - **Uncommitted on this branch, ready to commit:**
-  - `leak_inspector/wcag/manual_checklist.py` + `tests/test_wcag_manual_checklist.py` (new)
-  - `tools/wcag_smoke.py` — checklist wired into `--out` (writes `manual-checklist.md`)
-  - `README.md` (status table + report-output table now list the
-    checklist), `TODO.md` (this file)
-- **Tests:** full suite green — **349 passing**. Run with
+  - `leak_inspector/session.py` + `leak_inspector/cli.py` (new)
+  - `tests/test_wcag_session.py` (new)
+  - `leak_inspector/capture/bidi.py` — added the `Ctrl+Alt+A` audit
+    hotkey (parallel to the existing `Ctrl+Alt+S` screenshot signal)
+  - `pyproject.toml` — console entry point renamed to `wcag-checker`
+  - `README.md`, `INSTALL.md`, `TODO.md` (this file)
+- **Tests:** full suite green — **360 passing**. Run with
   `. .venv/bin/activate && python -m pytest -q`.
-- **Next build step:** Session runner + `wcag-checker` CLI (see Build
-  queue below).
-- **Env note:** venv at `.venv`; the audit engine needs
+- **Verified live:** a real `Ctrl+Alt+A` keypress drove the full chain
+  (preload → sentinel → BiDi callback → queue → audit) on publiq.be, and
+  `wcag-checker --help` runs as an installed console command.
+- **Next build step:** per-audit screenshots (the `Ctrl+Alt+S` sentinel
+  hook is still in `capture/bidi.py`), then the packaging pass.
+- **Env note:** venv at `.venv`; the audit engine still needs
   `pip install axe-selenium-python` (not a declared dep yet — see Final
   cleanup).
 
@@ -83,10 +89,19 @@ order; a clean automated run never implies conformance.
       review tasks, never pass/fail. Hermetic tests in
       `tests/test_wcag_manual_checklist.py`; wired into
       `tools/wcag_smoke.py --out`.
-- [ ] Session runner + `wcag-checker` CLI — reuse the capture driver and
-      the BiDi hotkey signal to run a live per-page audit on `Ctrl+Alt+A`;
-      accumulate findings in memory; write reports + `results.json` to
-      the output directory on window close.
+- [x] Session runner + `wcag-checker` CLI — `leak_inspector/session.py`
+      reuses the capture driver + the new BiDi `Ctrl+Alt+A` audit hotkey
+      (`capture/bidi.py`) to run a live per-page audit on each keypress,
+      accumulating findings in memory and writing all reports +
+      `results.json` + `manual-checklist.md` on window close.
+      `leak_inspector/cli.py` is the `wcag-checker` console entry point.
+      The hotkey callback only enqueues; all WebDriver calls run on the
+      main thread. Hermetic tests for the audit loop (fake driver) and
+      the report-writing seam (tmp_path) + CLI wiring in
+      `tests/test_wcag_session.py`; full chain live-smoked.
+  - [ ] Per-audit screenshots — save a PNG of each audited page state as
+        evidence. The `Ctrl+Alt+S` screenshot sentinel is still wired in
+        `capture/bidi.py` and is the natural hook.
 
 ## Final cleanup
 
@@ -107,10 +122,9 @@ order; a clean automated run never implies conformance.
 - [ ] `pyproject.toml`: add `axe-selenium-python`, raise
       `requires-python` to `>=3.12`, drop `maxminddb` (unused after
       removal) and reassess `tldextract` / `dnspython` (still imported by
-      `capture/recorder.py` + `capture/dns.py`), remove the dangling
-      `leak-inspector = leak_inspector.cli:main` entry point and the
-      `report/assets` package-data, rename the console entry point to
-      `wcag-checker`.
+      `capture/recorder.py` + `capture/dns.py`), and remove the
+      `report/assets` package-data (that dir is gone). Done already: the
+      console entry point is now `wcag-checker = leak_inspector.cli:main`.
 - [ ] Final README / SBOM pass once the tree reflects reality.
 
 ## Additional features

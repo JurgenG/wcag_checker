@@ -16,13 +16,13 @@ live, fully-rendered state for WCAG 2.2 AA accessibility issues. It
 writes the report in four formats — JSON, plain text, Markdown, and a
 self-contained HTML page.
 
-> **Note — this tool is mid-build.** The interactive workflow (browse by
-> hand and press an audit hotkey, **Ctrl+Alt+A**, on each page you want
-> checked) is still being built, and there is no `wcag-checker` command
-> yet. For now you audit **one page at a time** with the
-> `tools/wcag_smoke.py` runner shown throughout this guide. See the
-> "Project status" section of [README.md](README.md) for what works
-> today versus what's still planned.
+> **Note — two ways to run it.** The `wcag-checker` command opens Firefox
+> and lets you browse by hand, auditing each page you press **Ctrl+Alt+A**
+> on, then writes a report when you close the window. The
+> `tools/wcag_smoke.py` runner audits a single page non-interactively —
+> handy for the quick install check below. (Saving a screenshot per audit
+> is still on the roadmap.) See the "Project status" section of
+> [README.md](README.md).
 
 **A note about keeping your computer clean.** Almost everything this
 install needs goes into a single project folder. Inside it, a hidden
@@ -171,10 +171,10 @@ can take 1–2 minutes.
 **Checkpoint:** when it finishes, type:
 
 ```cmd
-python tools\wcag_smoke.py --help
+wcag-checker --help
 ```
 
-You should see the usage help for the audit runner.
+You should see the usage help for `wcag-checker`.
 
 You're done. Jump to [Verify the install worked](#verify-the-install-worked).
 
@@ -298,10 +298,10 @@ the package's own dependencies once packaging is finalized.)
 **Checkpoint:**
 
 ```bash
-python tools/wcag_smoke.py --help
+wcag-checker --help
 ```
 
-You should see the usage help for the audit runner.
+You should see the usage help for `wcag-checker`.
 
 Jump to [Verify the install worked](#verify-the-install-worked).
 
@@ -401,10 +401,10 @@ the package's own dependencies once packaging is finalized.)
 **Checkpoint:**
 
 ```bash
-python tools/wcag_smoke.py --help
+wcag-checker --help
 ```
 
-You should see the usage help for the audit runner.
+You should see the usage help for `wcag-checker`.
 
 Jump to [Verify the install worked](#verify-the-install-worked).
 
@@ -442,6 +442,18 @@ Open the HTML report to review the findings:
 report will be short. That's expected.
 
 **If you see all of the above:** the install worked.
+
+That was the single-page runner (deterministic, no interaction — ideal
+for this check). For real audits, use the interactive command and press
+**Ctrl+Alt+A** on each page you want checked:
+
+```bash
+wcag-checker https://example.com --out reports/
+```
+
+A Firefox window opens; browse to whatever you want to check, press
+**Ctrl+Alt+A** on each page, then close the window. The reports land in
+`reports/`.
 
 ---
 

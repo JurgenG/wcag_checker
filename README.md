@@ -27,12 +27,14 @@ The tool is **mid-build**. Here is what works today and what does not:
 | Report renderer — `results.json` + text + Markdown + HTML, with coverage summary | ✅ working |
 | Manual-review checklist for the criteria tooling can't decide | ✅ working |
 | Single-page audit runner (`tools/wcag_smoke.py`) | ✅ working |
-| Interactive **hotkey** session (browse by hand, press `Ctrl+Alt+A` per page) | 🚧 not built yet |
-| `wcag-checker` console command + per-audit screenshots | 🚧 not built yet |
+| Interactive **hotkey** session (browse by hand, press `Ctrl+Alt+A` per page) | ✅ working |
+| `wcag-checker` console command | ✅ working |
+| Per-audit screenshots as evidence | 🚧 not built yet |
 
-So today you audit **one page's rendered state at a time** through the
-`wcag_smoke.py` runner (below). The hand-driven, multi-page hotkey
-workflow is the design goal — see [Roadmap](#roadmap).
+The hand-driven, multi-page workflow — browse, press `Ctrl+Alt+A` on each
+page, close the window to get a report — now works via the `wcag-checker`
+command (below). The only piece still outstanding is saving a screenshot
+per audit as visual evidence.
 
 ## Requirements
 
@@ -62,27 +64,39 @@ pip install axe-selenium-python    # audit engine (not yet a declared dep)
 
 ## Usage
 
-Audit the rendered state of a page:
+### Interactive session (`wcag-checker`)
+
+Browse by hand and audit each page you choose:
+
+```bash
+wcag-checker https://example.com --out reports/
+```
+
+What happens:
+
+1. A visible Firefox window opens on the URL. Browse normally — click,
+   log in, open menus, dismiss banners.
+2. On any page (or page *state*) you want checked, press **`Ctrl+Alt+A`**.
+   The tool audits the DOM **as rendered at that instant** — axe-core's
+   WCAG 2.2 AA rules plus the keyboard/focus checks — and accumulates the
+   findings. Press it on as many pages as you like.
+3. **Close the Firefox window.** The reports for every audited page are
+   written to `reports/`.
+
+Options: `--out DIR` (default `reports/`) and `--headless` (a visible
+desktop is preferred for accurate focus behaviour).
+
+### Single-page runner (`tools/wcag_smoke.py`)
+
+For a quick, non-interactive check of one page's rendered state:
 
 ```bash
 python tools/wcag_smoke.py https://example.com --out reports/
 ```
 
-What happens:
-
-1. A visible Firefox window opens and navigates to the URL.
-2. The tool audits the DOM **as rendered at that moment** — axe-core's
-   WCAG 2.2 AA rules plus the keyboard/focus checks.
-3. The findings, grouped by WCAG criterion, are printed to the terminal
-   and (with `--out`) written to `reports/` as four files.
-4. Firefox closes.
-
-Options:
-
-- `--out DIR` — write `results.json`, `report.txt`, `report.md`, and
-  `report.html` into `DIR`. Without it, only the text summary is printed.
-- `--headless` — run Firefox without a visible window. Handy for a quick
-  check, but a visible desktop is preferred for accurate focus behavior.
+It opens Firefox, audits the landing page immediately, prints the
+findings grouped by criterion, writes the reports (with `--out`), and
+closes. Same `--headless` option.
 
 Example (trimmed) output:
 
@@ -171,19 +185,18 @@ a criterion with no automated finding is not a pass.
 
 ## Roadmap
 
-The intended finished workflow is hand-driven and multi-page:
+The hand-driven, multi-page workflow (`wcag-checker` → browse → press
+`Ctrl+Alt+A` per page → close the window → report) is now in place. Still
+to build:
 
-1. Launch `wcag-checker` on a starting URL; a normal Firefox window opens.
-2. Browse the site by hand — click, log in, open menus, dismiss banners.
-3. On any page *state* you want audited, press **`Ctrl+Alt+A`**; the tool
-   audits the live page and saves a screenshot as evidence.
-4. Close the window; a report covering every audited page is written,
-   including a manual-review checklist pre-filled per page.
+- **Per-audit screenshots** — save a PNG of each audited page state as
+  visual evidence alongside the findings.
+- **Packaging** — declare `axe-selenium-python` as a dependency (so the
+  separate install step goes away) and finalize `pyproject.toml`.
 
-Still to build: the interactive session runner and `Ctrl+Alt+A` hotkey,
-the `wcag-checker` console command, per-audit screenshots, and
-`manual_checklist.md` generation. Progress is tracked in
-[TODO.md](TODO.md).
+The `.invalid`-sentinel screenshot hotkey (`Ctrl+Alt+S`) is still present
+in the capture layer and is the natural hook for the screenshot feature.
+Progress is tracked in [TODO.md](TODO.md).
 
 ## Scope / non-goals
 

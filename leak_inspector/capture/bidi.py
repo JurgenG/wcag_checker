@@ -83,31 +83,50 @@ DEFAULT_BODY_SIZE_CAP_BYTES = 256 * 1024
 #: in events.jsonl.
 SENTINEL_SCREENSHOT_HOST = "leak-inspector-sentinel.invalid"
 
+#: Reserved host the in-page handler hits when the operator presses the
+#: WCAG **audit** shortcut. Same ``.invalid`` sentinel trick as
+#: :data:`SENTINEL_SCREENSHOT_HOST`, on a distinct host so the two signals
+#: stay independent; traffic to it is suppressed identically and never
+#: reaches events.jsonl. The session runner wires the callback (capture
+#: does not import ``wcag``).
+SENTINEL_AUDIT_HOST = "wcag-checker-sentinel.invalid"
 
-#: Preload script that BiDi injects into every browsing context. Binds
-#: ``Ctrl+Alt+S`` (Linux/Windows) / ``Ctrl+Option+S`` (macOS) on the
-#: ``document`` capture phase so it fires before any page handler. The
-#: signal is a ``fetch`` to :data:`SENTINEL_SCREENSHOT_HOST` with the
-#: current page's host in a ``?host=`` query — that's the value the
-#: recorder embeds in the screenshot filename.
+
+#: Preload script that BiDi injects into every browsing context. On the
+#: ``document`` capture phase (so it fires before any page handler) it
+#: binds two operator shortcuts:
 #:
-#: NOTE: Avoiding ``Ctrl+Shift+S`` because that's bound to Firefox's
-#: own screenshot tool in many builds (and ``preventDefault`` in a page
-#: handler does NOT block Firefox's chrome shortcuts).
+#:   * ``Ctrl+Alt+S`` — screenshot signal → :data:`SENTINEL_SCREENSHOT_HOST`
+#:   * ``Ctrl+Alt+A`` — audit signal → :data:`SENTINEL_AUDIT_HOST`
+#:
+#: Each fires a ``fetch`` to its sentinel host with the current page's host
+#: in a ``?host=`` query. BiDi's ``network.beforeRequestSent`` catches the
+#: fetch before DNS is even attempted, giving a clean in-band signal that
+#: needs no extra subscriptions.
+#:
+#: NOTE: Avoiding ``Ctrl+Shift+*`` — those collide with Firefox's own
+#: chrome shortcuts (and ``preventDefault`` in a page handler does NOT
+#: block Firefox chrome shortcuts).
 _PRELOAD_SCRIPT_JS = """
 function() {
   document.addEventListener('keydown', function(e) {
-    if (e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey
-        && (e.key === 's' || e.key === 'S')) {
-      e.preventDefault();
-      e.stopPropagation();
-      try {
-        fetch('https://leak-inspector-sentinel.invalid/screenshot?host='
-              + encodeURIComponent(location.host),
-              {method: 'POST', mode: 'no-cors', keepalive: true})
-          .catch(function() { /* DNS failure expected */ });
-      } catch (err) { /* swallowed */ }
+    if (!e.ctrlKey || !e.altKey || e.shiftKey || e.metaKey) return;
+    var action = null, host = null;
+    if (e.key === 's' || e.key === 'S') {
+      action = 'screenshot'; host = 'leak-inspector-sentinel.invalid';
+    } else if (e.key === 'a' || e.key === 'A') {
+      action = 'audit'; host = 'wcag-checker-sentinel.invalid';
+    } else {
+      return;
     }
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      fetch('https://' + host + '/' + action + '?host='
+            + encodeURIComponent(location.host),
+            {method: 'POST', mode: 'no-cors', keepalive: true})
+        .catch(function() { /* DNS failure expected */ });
+    } catch (err) { /* swallowed */ }
   }, true);
 }
 """
@@ -116,7 +135,7 @@ function() {
 def _sentinel_host_query(url: str) -> str:
     """Pull the ``?host=<x>`` value out of a sentinel URL (URL-decoded)."""
     parsed = urlparse(url)
-    if parsed.hostname != SENTINEL_SCREENSHOT_HOST:
+    if parsed.hostname not in (SENTINEL_SCREENSHOT_HOST, SENTINEL_AUDIT_HOST):
         return ""
     qs = parse_qs(parsed.query)
     values = qs.get("host") or [""]
@@ -401,6 +420,13 @@ class BiDiCapture:
         #: resulting PNG ``screenshot_<host>_<HHMMSS>.png``. Exceptions are
         #: swallowed so a misbehaving hook cannot stall capture.
         self.screenshot_requested_callback: Callable[[str], None] | None = None
+        #: Optional hook fired when the in-page key-down handler signals a
+        #: WCAG audit request (via fetch to :data:`SENTINEL_AUDIT_HOST`).
+        #: The callback receives the page host from the sentinel URL's
+        #: ``?host=`` query; the session runner ignores it and audits
+        #: ``driver.current_url`` directly. Exceptions are swallowed so a
+        #: misbehaving hook cannot stall capture.
+        self.audit_requested_callback: Callable[[str], None] | None = None
         #: Request-id set used to suppress sentinel traffic at every later
         #: stage (response_completed, fetch_error). Guarded by ``self._lock``.
         self._suppressed_request_ids: set[str] = set()
@@ -564,6 +590,17 @@ class BiDiCapture:
                 except Exception:
                     pass
             return
+        if self._is_audit_sentinel(request_url):
+            # Same suppression + callback routing as the screenshot signal.
+            with self._lock:
+                self._suppressed_request_ids.add(request_id)
+            host = _sentinel_host_query(request_url)
+            if self.audit_requested_callback is not None:
+                try:
+                    self.audit_requested_callback(host)
+                except Exception:
+                    pass
+            return
         entry = {
             "request": bidi_event.get("request") or {},
             "context": bidi_event.get("context"),
@@ -578,6 +615,12 @@ class BiDiCapture:
         if not url:
             return False
         return urlparse(url).hostname == SENTINEL_SCREENSHOT_HOST
+
+    @staticmethod
+    def _is_audit_sentinel(url: str) -> bool:
+        if not url:
+            return False
+        return urlparse(url).hostname == SENTINEL_AUDIT_HOST
 
     def _on_response_completed(self, bidi_event: dict) -> None:
         request_id = (bidi_event.get("request") or {}).get("request")
