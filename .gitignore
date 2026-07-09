@@ -22,6 +22,9 @@ venv/
 env/
 ENV/
 
+# Audit output (default --out directory; generated reports + screenshots)
+/reports/
+
 # OS cruft
 .DS_Store
 Thumbs.db
