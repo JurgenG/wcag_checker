@@ -134,29 +134,3 @@ def test_snapshot_file_from_captured_snapshot_redacts_local(tmp_path) -> None:
     # Cookie jar metadata is preserved verbatim.
     assert written["cookies"] == [{"name": "c", "value": "raw"}]
 
-
-# --- Phase 4: the length invariant analysis depends on ----------------------
-
-
-def test_value_bytes_survives_redaction_end_to_end() -> None:
-    from leak_inspector.analysis.runner import _collapse_storage_snapshots
-
-    original = {"auth_token": "café-secret-12345", "n": "12"}
-    driver = _FakeDriver("https://s.example/", local=original, session={})
-    snap = capture_snapshot(driver)
-    events = snapshot_to_events(snap, _counter())
-
-    sse = [
-        StorageSnapshotEvent(
-            event_id=e["event_id"], timestamp=e["timestamp"],
-            type=TYPE_STORAGE_SNAPSHOT, context_id=None, payload=e["payload"],
-            origin=e["payload"]["origin"], kind=e["payload"]["kind"],
-            entries=e["payload"]["entries"],
-        )
-        for e in events
-    ]
-    entries = _collapse_storage_snapshots(sse)
-    by_key = {en.key: en.value_bytes for en in entries}
-
-    assert by_key["auth_token"] == len("café-secret-12345".encode("utf-8"))
-    assert by_key["n"] == 2

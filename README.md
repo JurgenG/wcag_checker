@@ -1,95 +1,142 @@
 # wcag-checker
 
-Record a real, human-driven browsing session in Firefox and audit the
-pages you visit for **WCAG 2.2 AA** accessibility conformance — against
-the *live, fully-rendered* page, the way a real visitor actually
-experiences it.
+Audit a **live, fully-rendered** web page for **WCAG 2.2 AA**
+accessibility conformance — the page as a real visitor's browser actually
+renders it, including client-side content and state behind a dismissed
+consent banner.
 
-Most accessibility scanners crawl a URL and audit whatever the server
-returns. That misses everything behind interaction: content revealed by
-a click, state after a consent banner is dismissed, views built entirely
-in the browser. `wcag-checker` takes the opposite approach — **you**
-drive Firefox by hand, and when a page is in the state you want checked,
-you press a hotkey and the audit runs on the DOM as it stands at that
-instant.
+Most accessibility scanners fetch a URL and audit whatever the server
+returns, missing everything that only exists after the browser runs the
+page. `wcag-checker` instead drives a real Firefox and audits the DOM as
+it actually stands.
 
-> **Honest by design.** WCAG 2.2 has 87 success criteria. Only a
-> minority can be decided by a machine; most require human judgement.
-> A clean run from this tool is **not** a statement of WCAG conformance
-> — it means the *automatable* checks found no defect. See
-> [Coverage & honesty](#coverage--honesty).
+> **Honest by design.** WCAG 2.2 has 87 success criteria; only a minority
+> can be decided by a machine. A clean run from this tool is **not** a
+> statement of conformance — it means the *automatable* checks found no
+> defect. See [Coverage & honesty](#coverage--honesty). Green never means
+> done.
 
-## How it works
+## Project status
 
-1. You launch the tool on a starting URL. A normal, visible Firefox
-   window opens.
-2. You browse the site by hand — click, log in, open menus, dismiss
-   banners — exactly as a visitor would.
-3. On any page (or page *state*) you want audited, you press the **audit
-   hotkey**: `Ctrl+Alt+A` (`Ctrl+Option+A` on macOS). The tool audits
-   the live page right then and saves a screenshot as evidence. Press it
-   as many times as you like across as many pages as you like.
-4. You close the Firefox window. The tool writes a report covering every
-   page you audited.
+The tool is **mid-build**. Here is what works today and what does not:
 
-The audit itself combines three things:
+| Part | Status |
+| --- | --- |
+| axe-core audit (WCAG 2.2 AA rule tags) → findings | ✅ working |
+| Keyboard / focus checks axe skips (focus visible, keyboard trap, focus order, target size) | ✅ working |
+| Report renderer — `results.json` + text + Markdown + HTML, with coverage summary | ✅ working |
+| Single-page audit runner (`tools/wcag_smoke.py`) | ✅ working |
+| Interactive **hotkey** session (browse by hand, press `Ctrl+Alt+A` per page) | 🚧 not built yet |
+| `wcag-checker` console command, screenshots, manual-review checklist | 🚧 not built yet |
 
-- **axe-core** (the industry-standard accessibility engine, run with the
-  WCAG 2.2 AA rule tags) for the criteria a machine can decide —
-  contrast, `lang`, name/role/value, ARIA validity, and more.
-- **Keyboard / focus checks** that axe-core deliberately does not
-  perform: is focus visible, is there a keyboard trap, does focus order
-  match visual order, are interactive targets large enough.
-- **A manual-review checklist** listing the criteria no tool can decide
-  for you, pre-filled with the pages you visited so a human reviewer
-  knows exactly what still needs eyes.
+So today you audit **one page's rendered state at a time** through the
+`wcag_smoke.py` runner (below). The hand-driven, multi-page hotkey
+workflow is the design goal — see [Roadmap](#roadmap).
 
-## Quickstart
+## Requirements
 
-Install (see [INSTALL.md](INSTALL.md) for a step-by-step, zero-experience
-guide covering Windows, macOS, and Linux):
+- **Python 3.12+**
+- A **real, visible desktop** — the keyboard/focus checks move focus and
+  measure the rendered page, so there is no headless-server story (a
+  `--headless` flag exists but a real display is still recommended).
+- **Firefox.** geckodriver is fetched automatically by Selenium; if
+  Firefox itself is missing, a private copy is downloaded on first run.
+
+## Install
+
+See [INSTALL.md](INSTALL.md) for a step-by-step, zero-experience guide
+(Windows / macOS / Linux). The short version:
 
 ```bash
 git clone <your-repository-url> wcag-checker
 cd wcag-checker
 python3 -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate.bat
+source .venv/bin/activate          # Windows: .venv\Scripts\activate.bat
 pip install -e .
+pip install axe-selenium-python    # audit engine (not yet a declared dep)
 ```
 
-You need Python **3.12+**, a real desktop (not a headless server), and
-Firefox — geckodriver is fetched automatically by Selenium.
+> `axe-selenium-python` is installed separately for now — it will move
+> into the package dependencies once packaging is finalized.
 
-Run an audit:
+## Usage
+
+Audit the rendered state of a page:
 
 ```bash
-wcag-checker https://example.com --out reports/
+python tools/wcag_smoke.py https://example.com --out reports/
 ```
 
-A Firefox window opens on `example.com`. Browse to whatever you want to
-check, press **`Ctrl+Alt+A`** on each page, then **close the window**.
-The report lands in `reports/`.
+What happens:
 
-Reuse an existing Firefox profile (to test while logged in, with your
-own cookies/extensions) — note the profile is used in place and will be
-modified:
+1. A visible Firefox window opens and navigates to the URL.
+2. The tool audits the DOM **as rendered at that moment** — axe-core's
+   WCAG 2.2 AA rules plus the keyboard/focus checks.
+3. The findings, grouped by WCAG criterion, are printed to the terminal
+   and (with `--out`) written to `reports/` as four files.
+4. Firefox closes.
 
-```bash
-wcag-checker https://example.com --out reports/ --profile ~/path/to/profile
+Options:
+
+- `--out DIR` — write `results.json`, `report.txt`, `report.md`, and
+  `report.html` into `DIR`. Without it, only the text summary is printed.
+- `--headless` — run Firefox without a visible window. Handy for a quick
+  check, but a visible desktop is preferred for accurate focus behavior.
+
+Example (trimmed) output:
+
 ```
+WCAG 2.2 AA audit
+=================
+Pages audited (1):
+  - https://example.com
+
+Coverage summary
+----------------
+WCAG 2.2 A + AA criteria in scope: 56
+  automatable (full):    10
+  automatable (partial): 19
+  manual only:           27
+Criteria with findings: 3
+Findings: 28 error, 0 warning, 45 needs-review
+
+A clean automated run does not imply WCAG 2.2 AA conformance. ...
+
+Findings by criterion
+---------------------
+1.4.3  Contrast (Minimum)  [AA · full]  — FAIL
+  [error] .btn--arrow
+      [color-contrast] violation: Elements must meet minimum color contrast ...
+```
+
+## What gets checked
+
+Two engines run against the live page and their findings are merged and
+grouped by WCAG criterion:
+
+- **axe-core** (run with the AA tag set: `wcag2a`, `wcag2aa`, `wcag21a`,
+  `wcag21aa`, `wcag22aa`) for the criteria a machine can decide — colour
+  contrast, `lang`, name/role/value, ARIA validity, and more. Its
+  "incomplete" results (things axe cannot decide on its own) are surfaced
+  as `needs-review`, never as passes.
+- **Keyboard / focus checks** that axe deliberately does not perform,
+  each emitting `needs-review` candidates for a human to confirm:
+  - **2.4.7 / 2.4.11** — is a focus indicator visible; is the focused
+    element obscured by other content
+  - **2.1.2** — does keyboard focus get trapped
+  - **2.4.3** — positive `tabindex` that overrides natural focus order
+  - **2.5.8** — interactive targets smaller than 24×24 CSS px
 
 ## What the report contains
 
-Everything is written into the `--out` directory:
+With `--out DIR`, four views of the same audit are written:
 
 | File | What it holds |
-|--- |--- |
-| `results.json` | Canonical machine-readable result: every finding, per page, with criterion id, severity, message, and selector. The source of truth other formats render from. |
-| `report.html` | Self-contained HTML report — open it in any browser. Findings grouped by WCAG criterion, with the coverage summary and screenshots. |
+| --- | --- |
+| `results.json` | Canonical machine-readable result: every finding with criterion id, severity, message, and selector, plus the coverage summary. The source of truth the other formats render from. |
+| `report.html` | Self-contained HTML — open it in any browser. Findings grouped by WCAG criterion, with the coverage summary. |
 | `report.md` | The same report as Markdown, for pasting into issues/wikis. |
 | `report.txt` | Plain-text report for the terminal. |
-| `manual-checklist.md` | The human-review checklist: the criteria that can't be automated, per audited page, ready to work through. |
-| `*.png` | One screenshot per audit press, as visual evidence of the state that was checked. |
 
 Findings carry one of three severities: **error** (a definite failure),
 **warning** (a lower-impact definite failure), and **needs-review** (a
@@ -98,38 +145,54 @@ candidate the tool flagged but cannot confirm on its own).
 ## Coverage & honesty
 
 The tool classifies every WCAG 2.2 success criterion into one of three
-automatability tiers (the full mapping lives in
-[`docs/COVERAGE.md`](docs/COVERAGE.md) and is derived from the registry
-in `leak_inspector/wcag/core.py`):
+automatability tiers (the single source of truth is the registry in
+`leak_inspector/wcag/core.py`):
 
 - **full** — a tool can decide the automatable substance on its own
   (e.g. colour contrast, `lang`, name/role/value). A machine pass is
   meaningful evidence.
 - **partial** — a tool can flag *candidates*, but a human must confirm
   (e.g. link-text quality, reflow, focus order, target size).
-- **manual** — needs human judgement; the tool emits only a checklist
-  item, never a pass/fail (e.g. is the alt text *meaningful*, are error
+- **manual** — needs human judgement; the tool emits only a review item,
+  never a pass/fail (e.g. is the alt text *meaningful*, are error
   messages helpful, is the language plain).
 
-In this tool's conservative tiering, **11 of 87** criteria are `full`,
-**21** are `partial`, and **55** are `manual` — broadly consistent with
-the commonly-cited estimate that ~30% of WCAG is fully automatable, ~10%
-partially, and ~60% needs human review.
+Across all **87** criteria: **11 full**, **21 partial**, **55 manual**.
+Within the level A + AA conformance target (**56** criteria): **10
+full**, **19 partial**, **27 manual** — broadly consistent with the
+common estimate that ~30% of WCAG is fully automatable, ~10% partially,
+and ~60% needs human review.
 
-The report **always** states how many criteria were actually exercised
-and repeats, plainly, that a clean automated run does not imply
-conformance. Green never means done.
+Every report states how much of the AA scope is even automatable and
+repeats, in plain language, that a clean run is not conformance and that
+a criterion with no automated finding is not a pass.
+
+## Roadmap
+
+The intended finished workflow is hand-driven and multi-page:
+
+1. Launch `wcag-checker` on a starting URL; a normal Firefox window opens.
+2. Browse the site by hand — click, log in, open menus, dismiss banners.
+3. On any page *state* you want audited, press **`Ctrl+Alt+A`**; the tool
+   audits the live page and saves a screenshot as evidence.
+4. Close the window; a report covering every audited page is written,
+   including a manual-review checklist pre-filled per page.
+
+Still to build: the interactive session runner and `Ctrl+Alt+A` hotkey,
+the `wcag-checker` console command, per-audit screenshots, and
+`manual_checklist.md` generation. Progress is tracked in
+[TODO.md](TODO.md).
 
 ## Scope / non-goals
 
-- **Not headless.** Focus and keyboard behavior need a real, visible
-  browser on a real desktop. There is no scripted/headless crawl mode.
+- **Not a headless crawler.** Focus and keyboard behavior need a real,
+  visible browser on a real desktop.
 - **Firefox only.** No Chrome/WebKit driver path.
-- **No screen-reader testing.** NVDA/JAWS/VoiceOver announcement
-  behavior is out of scope and is directed to the manual checklist.
-- **No content-quality heuristics.** Plain-language and
-  error-helpfulness judgements are manual — the tool will not ship a
-  guessy heuristic that only produces noise.
+- **No screen-reader testing.** NVDA/JAWS/VoiceOver announcement behavior
+  is out of scope and is directed to the (planned) manual checklist.
+- **No content-quality heuristics.** Plain-language and error-helpfulness
+  judgements are manual — the tool will not ship a guessy heuristic that
+  only produces noise.
 - **No always-on monitoring** and **no active remediation.** This tool
   observes and reports; it does not fix pages or run continuously.
 

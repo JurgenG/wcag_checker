@@ -10,13 +10,19 @@ If something goes wrong at a checkpoint, that's the step to share with
 whoever helps you — not the final error, but the first checkpoint where
 the expected output didn't appear.
 
-**What you'll end up with:** a program called `wcag-checker` that opens a
-Firefox window, lets you browse a website normally, and — whenever you
-press the audit hotkey (**Ctrl+Alt+A**, or **Ctrl+Option+A** on macOS) —
-checks the current page for WCAG 2.2 AA accessibility issues. When you
-close the browser, it writes a report (JSON, plain text, Markdown, a
-self-contained HTML page, and a manual-review checklist) plus screenshots
-of every page you audited.
+**What you'll end up with:** a tool you run from the terminal that opens
+a Firefox window, navigates to a URL you give it, and audits that page's
+live, fully-rendered state for WCAG 2.2 AA accessibility issues. It
+writes the report in four formats — JSON, plain text, Markdown, and a
+self-contained HTML page.
+
+> **Note — this tool is mid-build.** The interactive workflow (browse by
+> hand and press an audit hotkey, **Ctrl+Alt+A**, on each page you want
+> checked) is still being built, and there is no `wcag-checker` command
+> yet. For now you audit **one page at a time** with the
+> `tools/wcag_smoke.py` runner shown throughout this guide. See the
+> "Project status" section of [README.md](README.md) for what works
+> today versus what's still planned.
 
 **A note about keeping your computer clean.** Almost everything this
 install needs goes into a single project folder. Inside it, a hidden
@@ -151,9 +157,12 @@ Still inside the same cmd window (the prompt should still show
 
 ```cmd
 pip install -e .
+pip install axe-selenium-python
 ```
 
-Don't forget the dot at the end.
+Don't forget the dot at the end of the first command. (`axe-selenium-python`
+is the audit engine; it's installed separately for now and will move into
+the package's own dependencies once packaging is finalized.)
 
 This downloads a handful of small Python packages (selenium,
 axe-selenium-python, pillow, and their dependencies). The first time it
@@ -162,10 +171,10 @@ can take 1–2 minutes.
 **Checkpoint:** when it finishes, type:
 
 ```cmd
-wcag-checker --help
+python tools\wcag_smoke.py --help
 ```
 
-You should see the usage help for the tool.
+You should see the usage help for the audit runner.
 
 You're done. Jump to [Verify the install worked](#verify-the-install-worked).
 
@@ -280,16 +289,19 @@ means the sandbox is active.
 
 ```bash
 pip install -e .
+pip install axe-selenium-python
 ```
-Don't forget the dot at the end.
+Don't forget the dot at the end of the first command. (`axe-selenium-python`
+is the audit engine; it's installed separately for now and will move into
+the package's own dependencies once packaging is finalized.)
 
 **Checkpoint:**
 
 ```bash
-wcag-checker --help
+python tools/wcag_smoke.py --help
 ```
 
-You should see the usage help for the tool.
+You should see the usage help for the audit runner.
 
 Jump to [Verify the install worked](#verify-the-install-worked).
 
@@ -380,16 +392,19 @@ sandbox is active.
 
 ```bash
 pip install -e .
+pip install axe-selenium-python
 ```
-Don't forget the dot at the end.
+Don't forget the dot at the end of the first command. (`axe-selenium-python`
+is the audit engine; it's installed separately for now and will move into
+the package's own dependencies once packaging is finalized.)
 
 **Checkpoint:**
 
 ```bash
-wcag-checker --help
+python tools/wcag_smoke.py --help
 ```
 
-You should see the usage help for the tool.
+You should see the usage help for the audit runner.
 
 Jump to [Verify the install worked](#verify-the-install-worked).
 
@@ -400,23 +415,22 @@ Jump to [Verify the install worked](#verify-the-install-worked).
 Still in the terminal where your prompt shows `(.venv)`, run:
 
 ```bash
-wcag-checker https://example.com --out reports/
+python tools/wcag_smoke.py https://example.com --out reports/
 ```
+
+(On Windows, use `python tools\wcag_smoke.py https://example.com --out reports/`.)
 
 The first time you run it, Selenium downloads a matching `geckodriver`
 automatically — that's expected and only happens once.
 
-Then several things should happen:
+Then several things should happen, on their own:
 
-1. A fresh Firefox window opens, showing `example.com`.
-2. You can click around in the browser normally — you're driving it by
-   hand.
-3. **Press Ctrl+Alt+A** (Ctrl+Option+A on macOS) to audit the current
-   page. Your terminal prints a line confirming an audit ran for that
-   page.
-
-**To finish: close the Firefox window.** The terminal prints where it
-wrote the report, and a `reports/` folder now contains the results.
+1. A fresh Firefox window opens and navigates to `example.com`.
+2. The tool audits the page as it is rendered, prints a summary of the
+   findings — grouped by WCAG criterion — to your terminal, and writes
+   the report.
+3. Firefox closes by itself, and a `reports/` folder now contains the
+   results.
 
 Open the HTML report to review the findings:
 
@@ -433,7 +447,13 @@ report will be short. That's expected.
 
 ## Common problems
 
-### "command not found: wcag-checker"
+### "python: can't open file '.../tools/wcag_smoke.py'"
+
+You're not inside the project folder. `cd` into the `wcag-checker`
+folder you cloned earlier, then run the command again. (`pwd` on
+macOS/Linux, or `cd` on Windows, shows which folder you're in.)
+
+### The tool won't start / my prompt lost its `(.venv)`
 
 Your virtual environment isn't active. Look at your prompt: if it
 doesn't start with `(.venv)`, run:
@@ -441,9 +461,9 @@ doesn't start with `(.venv)`, run:
 - **Windows cmd:** `.venv\Scripts\activate.bat`
 - **macOS / Linux:** `source .venv/bin/activate`
 
-(You need to do this every time you open a new terminal to use the
-tool. There's no harm in it — it just tells the terminal where to
-find `wcag-checker`.)
+(You need to do this every time you open a new terminal to use the tool.
+There's no harm in it — it just points the terminal at the sandbox that
+holds the tool and its packages.)
 
 ### "geckodriver version 0.36.0 might not be compatible…"
 
@@ -462,6 +482,15 @@ project folder. Make sure you're in the right folder (`pwd` on
 macOS/Linux shows it) and that the virtual environment is active, then
 run `pip install -e .` again. Don't forget the dot at the end.
 
+### "ModuleNotFoundError: No module named 'axe_selenium_python'"
+
+The separate audit-engine step was skipped. With the virtual environment
+active, run:
+
+```bash
+pip install axe-selenium-python
+```
+
 ### Firefox opens but immediately closes / never appears
 
 Two common causes:
@@ -473,13 +502,6 @@ Two common causes:
   wcag-checker needs a real desktop — it opens a visible window and
   measures keyboard focus behavior, so it cannot run headless. Run it
   on the computer you're physically sitting in front of.
-
-### The audit hotkey does nothing
-
-Make sure the Firefox window that wcag-checker opened has focus (click
-into the page first), then press **Ctrl+Alt+A** (Ctrl+Option+A on
-macOS). The audit runs against whatever page is currently showing — you
-can press it once per page you want checked.
 
 ### "permission denied" when running commands
 
@@ -570,10 +592,10 @@ Only do this if you're certain no other software needs them.
 
   Same caveat: don't remove `python3` or `git`.
 
-### Optional — remove the Firefox profile wcag-checker created
+### Optional — Firefox profiles
 
-If you ran audits with `--profile` pointed at an existing Firefox
-profile, wcag-checker used that profile in place. The default behaviour
-(no `--profile` flag) uses a fresh temporary profile that the operating
-system cleans up automatically — so unless you explicitly used
-`--profile`, there's nothing more to remove.
+The runner always launches Firefox with a **fresh temporary profile**
+that is deleted automatically when the audit finishes, so there is
+nothing extra to clean up. (Auditing while logged in, by reusing an
+existing profile, is part of the planned interactive workflow and is not
+available yet.)
