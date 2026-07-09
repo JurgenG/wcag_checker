@@ -6,20 +6,24 @@ order; a clean automated run never implies conformance.
 
 ## Session state — resume here (last worked 2026-07-09)
 
-- **Branch:** `feature/rename-audit-page` (branched off `main` after
-  `feature/smoke-settle` was fast-forward merged, along with a follow-up
-  commit git-ignoring the generated `reports/` output dir). Branch-style
+- **Branch:** `feature/cli-once` (branched off `main` after
+  `feature/rename-audit-page` was fast-forward merged). Branch-style
   development — start each new step on its own branch off `main`.
 - **Uncommitted on this branch, ready to commit:**
-  - Renamed the single-page runner `tools/wcag_smoke.py` →
-    `tools/audit_page.py` (it outgrew its throwaway "smoke" origins) and
-    its test to `tests/test_audit_page_settle.py`; updated all references
-    in `README.md`, `INSTALL.md`, `TODO.md` (this file).
-- **Tests:** full suite green — **380 passing**. Run with
+  - Folded the single-page runner into the CLI as `wcag-checker --once`.
+    `tools/audit_page.py` is **deleted** (`tools/` is now empty);
+    `session.run_once` + `session.wait_until_settled` are the package
+    entry points, and `cli.main` dispatches interactive vs `--once`.
+  - `tests/test_wcag_session_settle.py` (renamed from the audit_page
+    test; now imports from `session`) + a `--once` CLI test in
+    `tests/test_wcag_session.py`.
+  - `README.md`, `INSTALL.md`, `TODO.md` (this file) updated.
+- **Tests:** full suite green — **381 passing**. Run with
   `. .venv/bin/activate && python -m pytest -q`.
-- **Next build step:** nothing queued. Optional: a final README/SBOM
-  skim; and consider whether to fold `audit_page.py` into the CLI as a
-  non-interactive `wcag-checker … --once` mode (deferred).
+- **Verified:** `wcag-checker https://belibre.be --once` handled the
+  redirect and audited `/en/` end to end.
+- **Next build step:** nothing queued. Only an optional final README/SBOM
+  skim remains; otherwise the tree reflects reality.
 - **Env note:** venv at `.venv`; `axe-selenium-python` is now a declared
   dependency, so a plain `pip install -e .` pulls it in.
 

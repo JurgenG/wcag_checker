@@ -26,7 +26,7 @@ The tool is **mid-build**. Here is what works today and what does not:
 | Keyboard / focus checks axe skips (focus visible, keyboard trap, focus order, target size) | ✅ working |
 | Report renderer — `results.json` + text + Markdown + HTML, with coverage summary | ✅ working |
 | Manual-review checklist for the criteria tooling can't decide, with step-by-step review questions per criterion | ✅ working |
-| Single-page audit runner (`tools/audit_page.py`) | ✅ working |
+| One-shot single-page audit (`wcag-checker --once`) | ✅ working |
 | Interactive **hotkey** session (browse by hand, press `Ctrl+Alt+A` per page) | ✅ working |
 | `wcag-checker` console command | ✅ working |
 | Per-finding screenshots (a PNG of each flagged element as evidence) | ✅ working |
@@ -83,19 +83,22 @@ What happens:
 Options: `--out DIR` (default `reports/`) and `--headless` (a visible
 desktop is preferred for accurate focus behaviour).
 
-### Single-page runner (`tools/audit_page.py`)
+### One-shot audit (`--once`)
 
-For a quick, non-interactive check of one page's rendered state:
+For a quick, non-interactive check of a single page — no hotkey:
 
 ```bash
-python tools/audit_page.py https://example.com --out reports/
+wcag-checker https://example.com --once --out reports/
 ```
 
-It opens Firefox, audits the landing page immediately, prints the
-findings grouped by criterion, writes the reports (with `--out`), and
-closes. Same `--headless` option.
+It opens Firefox, **waits for the page to settle** (so a client-side
+redirect can't race the audit), audits that one rendered page, writes the
+reports, and exits. This is the right mode for a page that redirects or
+vanishes too fast to press `Ctrl+Alt+A` by hand; if a redirect happens it
+audits — and reports — the URL the page settled on. Same `--out` and
+`--headless` options.
 
-Example (trimmed) output:
+Example (trimmed) output from an audit:
 
 ```
 WCAG 2.2 AA audit

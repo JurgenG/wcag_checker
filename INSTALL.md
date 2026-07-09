@@ -16,13 +16,13 @@ live, fully-rendered state for WCAG 2.2 AA accessibility issues. It
 writes the report in four formats — JSON, plain text, Markdown, and a
 self-contained HTML page.
 
-> **Note — two ways to run it.** The `wcag-checker` command opens Firefox
-> and lets you browse by hand, auditing each page you press **Ctrl+Alt+A**
-> on, then writes a report when you close the window. The
-> `tools/audit_page.py` runner audits a single page non-interactively —
-> handy for the quick install check below. (Saving a screenshot per audit
-> is still on the roadmap.) See the "Project status" section of
-> [README.md](README.md).
+> **Note — two ways to run it.** By default the `wcag-checker` command
+> opens Firefox and lets you browse by hand, auditing each page you press
+> **Ctrl+Alt+A** on, then writes a report when you close the window. With
+> `--once` the same command audits a single page non-interactively and
+> exits — handy for the quick install check below, and for pages that
+> redirect too fast to press the hotkey. See the "Project status" section
+> of [README.md](README.md).
 
 **A note about keeping your computer clean.** Almost everything this
 install needs goes into a single project folder. Inside it, a hidden
@@ -409,10 +409,8 @@ Jump to [Verify the install worked](#verify-the-install-worked).
 Still in the terminal where your prompt shows `(.venv)`, run:
 
 ```bash
-python tools/audit_page.py https://example.com --out reports/
+wcag-checker https://example.com --once --out reports/
 ```
-
-(On Windows, use `python tools\audit_page.py https://example.com --out reports/`.)
 
 The first time you run it, Selenium downloads a matching `geckodriver`
 automatically — that's expected and only happens once.
@@ -453,11 +451,11 @@ A Firefox window opens; browse to whatever you want to check, press
 
 ## Common problems
 
-### "python: can't open file '.../tools/audit_page.py'"
+### "wcag-checker: command not found"
 
-You're not inside the project folder. `cd` into the `wcag-checker`
-folder you cloned earlier, then run the command again. (`pwd` on
-macOS/Linux, or `cd` on Windows, shows which folder you're in.)
+Either the virtual environment isn't active (see the next entry) or the
+install step didn't finish. With `(.venv)` showing in your prompt, run
+`pip install -e .` again from inside the `wcag-checker` folder you cloned.
 
 ### The tool won't start / my prompt lost its `(.venv)`
 

@@ -194,6 +194,7 @@ class TestCli:
         assert args.url == "https://x/a"
         assert str(args.out) == "reports"
         assert args.headless is False
+        assert args.once is False
 
     def test_main_invokes_session(self, monkeypatch, tmp_path) -> None:
         from pathlib import Path
@@ -217,3 +218,32 @@ class TestCli:
         assert rc == 0
         assert calls["url"] == "https://x/a"
         assert calls["headless"] is True
+
+    def test_once_flag_invokes_run_once_not_session(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        from pathlib import Path
+
+        from leak_inspector import cli, session
+        from leak_inspector.session import SessionResult
+
+        calls: dict[str, object] = {}
+
+        def fake_once(url, out, *, headless):
+            calls.update(url=url, out=out, headless=headless)
+            return SessionResult(
+                audited_urls=("https://x/a",),
+                findings=[],
+                output_dir=Path(out),
+                written={},
+            )
+
+        def fail_session(*a, **k):  # pragma: no cover - must not be called
+            raise AssertionError("run_session called in --once mode")
+
+        monkeypatch.setattr(session, "run_once", fake_once)
+        monkeypatch.setattr(session, "run_session", fail_session)
+        rc = cli.main(["https://x/a", "--once", "--out", str(tmp_path)])
+        assert rc == 0
+        assert calls["url"] == "https://x/a"
+        assert calls["headless"] is False

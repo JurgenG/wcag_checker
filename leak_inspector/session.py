@@ -148,6 +148,89 @@ def run_session(
     )
 
 
+def run_once(
+    target_url: str,
+    output_dir: Path | str,
+    *,
+    headless: bool = False,
+) -> SessionResult:
+    """Audit a single page non-interactively and write the reports.
+
+    Opens Firefox on ``target_url``, waits for the page to settle (so a
+    client-side redirect cannot leave axe-core injected into a discarded
+    document — see :func:`wait_until_settled`), audits that one rendered
+    page, writes the reports to ``output_dir``, and returns a
+    :class:`SessionResult`. Unlike :func:`run_session` there is no audit
+    hotkey and no window-close wait — it audits once and exits, which also
+    handles pages that redirect or vanish too fast to press ``Ctrl+Alt+A``
+    by hand. ``headless`` runs without a visible window.
+
+    ``SessionResult.audited_urls`` holds the single URL the page settled
+    on; when that differs from ``target_url`` a redirect occurred.
+    """
+    screenshot_dir = Path(output_dir) / SCREENSHOT_DIRNAME
+    with launch_driver(headless=headless) as launched:
+        driver = launched.driver
+        driver.get(target_url)
+        audited_url = wait_until_settled(driver)
+        findings = audit_page(driver, audited_url, screenshot_dir)
+
+    generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    written = write_reports(
+        output_dir, findings, [audited_url], generated_at=generated_at
+    )
+    return SessionResult(
+        audited_urls=(audited_url,),
+        findings=findings,
+        output_dir=Path(output_dir),
+        written=written,
+    )
+
+
+def wait_until_settled(
+    driver: Any,
+    *,
+    timeout: float = 15.0,
+    quiet: float = 1.5,
+    poll: float = 0.25,
+) -> str:
+    """Block until the page stops navigating and has finished loading.
+
+    A client-side redirect (e.g. language detection) can replace the
+    document shortly after ``driver.get`` returns; auditing before that
+    settles injects axe-core into a doomed document and ``axe.run`` then
+    fails with "axe is not defined". This polls ``driver.current_url`` and
+    ``document.readyState`` and returns once the URL has held steady for
+    ``quiet`` seconds while ``readyState`` is ``"complete"``, or once
+    ``timeout`` seconds elapse (whichever comes first). Returns the URL the
+    page settled on — callers treat that as the audited URL, since a
+    redirect means it differs from the one requested.
+    """
+    start = time.monotonic()
+    last_url: str | None = None
+    stable_since = start
+    while True:
+        now = time.monotonic()
+        try:
+            url = driver.current_url
+            ready = driver.execute_script(
+                "return document.readyState === 'complete';"
+            )
+        except WebDriverException:
+            # Mid-navigation: the context is momentarily unavailable. Treat
+            # it as not-yet-settled and keep waiting.
+            url, ready = None, False
+            last_url = None
+        if url is not None:
+            if url != last_url:
+                last_url, stable_since = url, now
+            elif ready and now - stable_since >= quiet:
+                return url
+        if now - start >= timeout:
+            return last_url if last_url is not None else _safe_current_url(driver)
+        time.sleep(poll)
+
+
 def _run_audit_loop(
     driver: Any,
     audit_queue: "queue.Queue[str]",
@@ -241,8 +324,11 @@ def _drain(audit_queue: "queue.Queue[str]") -> bool:
 
 __all__ = [
     "DEFAULT_POLL_INTERVAL",
+    "SCREENSHOT_DIRNAME",
     "SessionResult",
     "audit_page",
+    "run_once",
     "run_session",
+    "wait_until_settled",
     "write_reports",
 ]

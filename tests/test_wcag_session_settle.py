@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Tests for the smoke runner's page-settle wait.
+"""Tests for the session's page-settle wait (``wait_until_settled``).
 
 Hermetic: no browser. A fake driver scripts a URL sequence (simulating a
 client-side redirect) and a deterministic clock replaces wall-clock time,
@@ -27,7 +27,7 @@ from __future__ import annotations
 import pytest
 from selenium.common.exceptions import WebDriverException
 
-from tools import audit_page
+from leak_inspector import session
 
 
 class _FakeClock:
@@ -69,32 +69,32 @@ class _ScriptedDriver:
 @pytest.fixture(autouse=True)
 def _no_real_time(monkeypatch):
     """Replace sleep with a no-op and monotonic with the fake clock."""
-    monkeypatch.setattr(audit_page.time, "sleep", lambda _s: None)
-    monkeypatch.setattr(audit_page.time, "monotonic", _FakeClock().monotonic)
+    monkeypatch.setattr(session.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(session.time, "monotonic", _FakeClock().monotonic)
 
 
 def test_waits_through_client_side_redirect() -> None:
     # Two polls on the original URL, then a redirect that then holds.
     driver = _ScriptedDriver(["https://x/", "https://x/", "https://x/en/"])
-    settled = audit_page.wait_until_settled(driver, quiet=2.0, timeout=100.0)
+    settled = session.wait_until_settled(driver, quiet=2.0, timeout=100.0)
     assert settled == "https://x/en/"
 
 
 def test_stable_page_returns_that_url() -> None:
     driver = _ScriptedDriver(["https://x/page"])
-    settled = audit_page.wait_until_settled(driver, quiet=2.0, timeout=100.0)
+    settled = session.wait_until_settled(driver, quiet=2.0, timeout=100.0)
     assert settled == "https://x/page"
 
 
 def test_never_settles_returns_last_url_within_timeout() -> None:
     # URL changes every poll → never quiet; must stop at timeout, not hang.
     driver = _ScriptedDriver([f"https://x/{n}" for n in range(50)])
-    settled = audit_page.wait_until_settled(driver, quiet=2.0, timeout=5.0)
+    settled = session.wait_until_settled(driver, quiet=2.0, timeout=5.0)
     assert settled.startswith("https://x/")
 
 
 def test_not_ready_does_not_settle_early() -> None:
     # readyState never complete → falls through to the timeout return.
     driver = _ScriptedDriver(["https://x/"], ready=False)
-    settled = audit_page.wait_until_settled(driver, quiet=1.0, timeout=4.0)
+    settled = session.wait_until_settled(driver, quiet=1.0, timeout=4.0)
     assert settled == "https://x/"
