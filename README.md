@@ -25,7 +25,7 @@ The tool is **mid-build**. Here is what works today and what does not:
 | axe-core audit (WCAG 2.2 AA rule tags) → findings | ✅ working |
 | Keyboard / focus checks axe skips (focus visible, keyboard trap, focus order, target size) | ✅ working |
 | Report renderer — `results.json` + text + Markdown + HTML, with coverage summary | ✅ working |
-| Manual-review checklist for the criteria tooling can't decide | ✅ working |
+| Manual-review checklist for the criteria tooling can't decide, with step-by-step review questions per criterion | ✅ working |
 | Single-page audit runner (`tools/wcag_smoke.py`) | ✅ working |
 | Interactive **hotkey** session (browse by hand, press `Ctrl+Alt+A` per page) | ✅ working |
 | `wcag-checker` console command | ✅ working |
@@ -150,7 +150,7 @@ With `--out DIR`, four views of the same audit are written, plus a
 | `report.html` | HTML with inline styling — open it in any browser. Findings grouped by WCAG criterion, each with a thumbnail of the offending element, and the coverage summary. |
 | `report.md` | The same report as Markdown, for pasting into issues/wikis. |
 | `report.txt` | Plain-text report for the terminal. |
-| `manual-checklist.md` | The human-review checklist: the 46 A + AA criteria tooling cannot decide, as checkboxes grouped per audited page. |
+| `manual-checklist.md` | The human-review checklist: the 46 A + AA criteria tooling cannot decide, each with step-by-step review questions as checkboxes, grouped per audited page. |
 | `screenshots/` | One PNG per flagged element (the snippet with the issue), named so an element failing several criteria is captured once. Findings reference these by relative path. |
 
 Findings carry one of three severities: **error** (a definite failure),
@@ -196,7 +196,7 @@ leftovers still in the tree (see [TODO.md](TODO.md)).
   visible browser on a real desktop.
 - **Firefox only.** No Chrome/WebKit driver path.
 - **No screen-reader testing.** NVDA/JAWS/VoiceOver announcement behavior
-  is out of scope and is directed to the (planned) manual checklist.
+  is out of scope and is directed to the manual checklist.
 - **No content-quality heuristics.** Plain-language and error-helpfulness
   judgements are manual — the tool will not ship a guessy heuristic that
   only produces noise.

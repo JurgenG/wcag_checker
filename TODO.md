@@ -6,22 +6,22 @@ order; a clean automated run never implies conformance.
 
 ## Session state — resume here (last worked 2026-07-09)
 
-- **Branch:** `feature/privacy-cleanup` (branched off `main` after
-  `feature/packaging` was fast-forward merged). Branch-style
-  development — start each new step on its own branch off `main`.
+- **Branch:** `feature/manual-check` (branched off `main` after
+  `feature/privacy-cleanup` was fast-forward merged, plus a small
+  standalone commit removing the dead `tools/score_v2_preview.py`).
+  Branch-style development — start each new step on its own branch off
+  `main`.
 - **Uncommitted on this branch, ready to commit:**
-  - `leak_inspector/bundle/reader.py` — removed dead `enrichment()`
-    property + `_MAX_ENRICHMENT_BYTES`
-  - `leak_inspector/bundle/__init__.py`, `leak_inspector/safe_net.py`,
-    `leak_inspector/capture/recorder.py` — stale docstrings repointed
-  - `bulk-tool/{run,overview,make_score_scatter,rerender_overview}.py`
-    deleted; `bulk-tool/datasets/` kept
-  - `TODO.md` (this file)
-- **Tests:** full suite green — **369 passing**. Run with
+  - `leak_inspector/wcag/manual_checklist.py` — `QUESTIONS` map +
+    per-criterion question rendering (markdown headings, JSON array)
+  - `tests/test_wcag_manual_checklist.py` — updated format tests + new
+    completeness/no-drift tests
+  - `README.md`, `TODO.md` (this file)
+- **Tests:** full suite green — **373 passing**. Run with
   `. .venv/bin/activate && python -m pytest -q`.
-- **Next build step:** the "Additional features" item — step-by-step
-  questions for a human manual check of a page. (The privacy-removal
-  loose ends are now closed; a final README/SBOM skim can follow.)
+- **Next build step:** nothing queued. Candidate follow-ups: reconcile
+  the 2.5.8 double-report between axe and `keyboard_nav` (Build queue),
+  and a final README/SBOM skim. Otherwise the tree reflects reality.
 - **Env note:** venv at `.venv`; `axe-selenium-python` is now a declared
   dependency, so a plain `pip install -e .` pulls it in.
 
@@ -146,4 +146,11 @@ order; a clean automated run never implies conformance.
       loose ends above are closed.
 
 ## Additional features
-- [ ] Add step by step questions for a manual check of a page by a human
+- [x] Step-by-step questions for a human manual check of a page —
+      `wcag/manual_checklist.py` now carries a `QUESTIONS` map (ordered,
+      concrete review questions per in-scope manual/partial criterion,
+      with applicability gates). `render_markdown` renders each criterion
+      as a heading with its questions as checkboxes, per page;
+      `render_json` adds a `questions` array. A completeness test pins
+      that the question set exactly matches the review criteria (no gaps,
+      no drift). Tests in `tests/test_wcag_manual_checklist.py`.

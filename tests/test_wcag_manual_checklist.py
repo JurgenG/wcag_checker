@@ -26,7 +26,9 @@ import json
 
 from leak_inspector.wcag.manual_checklist import (
     NOTE,
+    QUESTIONS,
     build_checklist,
+    questions_for,
     render_json,
     render_markdown,
 )
@@ -70,21 +72,25 @@ class TestBuildChecklist:
 
 
 class TestRenderMarkdown:
-    def test_section_per_url_with_checkboxes(self) -> None:
+    def test_section_per_url_with_criterion_headings(self) -> None:
         out = render_markdown(build_checklist(URLS))
         assert out.startswith("# WCAG 2.2 AA manual-review checklist")
         assert "## https://example.test/a" in out
         assert "## https://example.test/b" in out
-        assert "- [ ] 1.2.1 Audio-only and Video-only (Prerecorded) (A)" in out
+        # Each criterion is a heading tagged with its level and tier.
+        assert "### 1.2.1 Audio-only and Video-only (Prerecorded) (A · manual)" in out
+        assert "### 2.4.3 Focus Order (A · partial)" in out
+
+    def test_questions_render_as_checkboxes(self) -> None:
+        out = render_markdown(build_checklist(URLS))
+        # A specific authored question appears as an unchecked task item.
+        assert f"- [ ] {QUESTIONS['2.4.5'][0]}" in out
+        # Two pages × the same question → it appears once per page.
+        assert out.count(f"- [ ] {QUESTIONS['2.4.5'][0]}") == 2
 
     def test_full_tier_criterion_absent(self) -> None:
         out = render_markdown(build_checklist(URLS))
         assert "1.4.3 Contrast" not in out
-
-    def test_tier_groups_present(self) -> None:
-        out = render_markdown(build_checklist(URLS))
-        assert "### Needs human judgement (manual)" in out
-        assert "### Confirm automated candidates (partial)" in out
 
     def test_empty_urls_note(self) -> None:
         out = render_markdown(build_checklist([]))
@@ -99,4 +105,25 @@ class TestRenderJson:
         assert data["note"] == NOTE
         assert data["urls"] == ["https://example.test/a", "https://example.test/b"]
         assert len(data["criteria"]) == 46
-        assert {"id", "name", "level", "tier"} == set(data["criteria"][0])
+        assert {"id", "name", "level", "tier", "questions"} == set(data["criteria"][0])
+
+    def test_criteria_carry_their_questions(self) -> None:
+        data = json.loads(render_json(build_checklist(URLS)))
+        by_id = {c["id"]: c for c in data["criteria"]}
+        assert by_id["2.4.5"]["questions"] == list(QUESTIONS["2.4.5"])
+        assert all(c["questions"] for c in data["criteria"])
+
+
+class TestQuestions:
+    def test_every_in_scope_criterion_has_questions(self) -> None:
+        for c in build_checklist(URLS).criteria:
+            assert questions_for(c.id), f"no questions for {c.id}"
+
+    def test_no_questions_outside_the_review_set(self) -> None:
+        in_scope = {c.id for c in build_checklist(URLS).criteria}
+        assert set(QUESTIONS) == in_scope
+
+    def test_questions_are_nonempty_strings(self) -> None:
+        for cid, qs in QUESTIONS.items():
+            assert qs, f"empty question list for {cid}"
+            assert all(isinstance(q, str) and q.strip() for q in qs)
