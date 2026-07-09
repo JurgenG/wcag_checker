@@ -1,462 +1,195 @@
-# leak_inspector — project guide
-
-This document is the starting point for a developer joining the
-project. It is enough, on its own, to take the codebase from its
-current scaffolded state to a working **v1.0**.
-
-`README.md` is the short pitch; `CLAUDE.md` is the code-standards
-contract; this file is the implementation plan.
-
----
-
-## What this project is
-
-`leak_inspector` is a measurement tool for understanding how websites
-and their third parties collect data about a person.
-
-The workflow is:
-
-1. A developer (or researcher) launches the tool, which opens a real
-   Firefox window driven by Selenium.
-2. The user **manually** browses a target site — clicking, scrolling,
-   logging in, accepting/refusing cookies, whatever scenario is under
-   study. The tool does not script the browsing.
-3. While the user browses, the tool records every outbound request,
-   every change to browser storage, and every script the site loads.
-4. When the session ends, the tool writes a self-contained, versioned
-   **capture bundle** to disk.
-5. A separate analysis stage reads the bundle, runs **tracker modules**
-   over it, and produces a human-readable report plus a JSON dump.
-
-Capture and analysis are decoupled. A bundle is a frozen artifact; an
-analysis can be re-run against the same bundle as modules evolve.
-
----
-
-## v1.0 — what a developer is building
-
-Three components, in this order:
-
-```
-┌──────────────┐     bundle.zip      ┌──────────────┐    report.{txt,json}
-│   capture    │ ─────────────────▶  │   analysis   │ ─────────────────▶
-│  (Selenium)  │                     │   (modules)  │
-└──────────────┘                     └──────────────┘
-```
-
-### Package layout
-
-The scaffolding is already in place:
-
-```
-leak_inspector/
-├── PROJECT.md
-├── README.md
-├── CLAUDE.md
-├── pyproject.toml
-├── leak_inspector/
-│   ├── __init__.py
-│   ├── cli.py                 # entrypoint: console script `leak-inspector`
-│   ├── capture/               # Selenium + BiDi recording
-│   ├── bundle/                # bundle read/write, schema, event model
-│   ├── analysis/              # iterates events, dispatches to modules
-│   ├── modules/               # tracker modules (ga4, google_fonts, clarity)
-│   └── report/                # text + json reporters
-└── tests/
-    └── fixtures/
-```
-
-The `bundle` package owns the event-model dataclasses and the
-on-disk format; both capture (which writes) and analysis (which
-reads) depend on it.
-
-The CLI entrypoint is registered in `pyproject.toml` as
-`leak-inspector = "leak_inspector.cli:main"`.
-
----
-
-## The bundle format (the contract)
-
-A bundle is a zipped directory. Capture writes it; analysis reads it.
-Nothing else crosses the boundary.
-
-```
-<label>-<ISO-timestamp>.zip
-├── manifest.json
-├── events.jsonl
-├── storage/
-│   └── <origin>.json          # one file per origin observed
-└── scripts/
-    └── <sha256>               # raw script bodies, content-addressed
-```
-
-### `manifest.json`
-
-Schema-versioned metadata. Treat the schema version as the bundle's
-public API.
-
-```json
-{
-  "bundle_schema": 1,
-  "tool": "leak_inspector",
-  "tool_version": "0.1.0",
-  "session_id": "2026-05-22T10-40-12Z-9f3a",
-  "label": "news-site",
-  "started_at": "2026-05-22T10:40:12Z",
-  "ended_at":   "2026-05-22T10:47:55Z",
-  "target_url": "https://example.com",
-  "base_domain": "example.com",
-  "browser": {"name": "firefox", "version": "..."},
-  "profile": "fresh"            // or "user:<path>"
-}
-```
-
-### `events.jsonl`
-
-One JSON object per line. Append-only during capture, ordered by
-`timestamp`. Each event has at minimum:
-
-| Field        | Description                                              |
-|--------------|----------------------------------------------------------|
-| `event_id`   | Monotonic counter, unique within the bundle.             |
-| `timestamp`  | ISO-8601 UTC.                                            |
-| `type`       | See event types below.                                   |
-| `context_id` | BiDi browsing-context id (which tab/frame).              |
-| `payload`    | Event-specific object.                                   |
-
-Event types (v1.0):
-
-- `navigation` — top-level navigations.
-- `request` — outbound HTTP request. Payload includes `method`, `url`,
-  `host`, `headers`, `request_body` (text or null), `initiator` (best
-  effort from BiDi), `response_status`, `response_mime`,
-  `response_headers`. Response **bodies** are not captured.
-- `websocket_open` / `websocket_message` / `websocket_close`.
-- `storage_snapshot` — emitted at navigation boundaries and session
-  end. Payload is `{origin, kind: "local"|"session"|"cookie", entries:
-  [{key, value}]}`. The full snapshot lives in `storage/<origin>.json`;
-  the event references it by origin.
-- `script_load` — a script was loaded. Payload includes `url` and
-  `sha256` (the file body is stored in `scripts/<sha256>`).
-- `log` — `console.*`, JS errors, BiDi log entries.
-
-Modules consume this event stream. They do **not** read raw Selenium
-objects and do **not** touch the filesystem directly.
-
-### `storage/<origin>.json`
-
-The full state of `localStorage`, `sessionStorage`, and
-`document.cookie` for one origin at one moment, plus a `captured_at`
-timestamp. There may be multiple snapshots per origin across the
-session; they are distinguished by timestamp within the file.
-
-### `scripts/<sha256>`
-
-Raw script bodies, content-addressed. Capture stores each script once,
-no matter how many times the site loads it. v1.0 stores them but does
-not yet analyze them.
-
----
-
-## Component 1 — capture (`leak_inspector.capture`)
-
-### Driver setup
-
-Use Selenium + geckodriver against a real Firefox install. Required
-preferences:
-
-- `dom.webdriver.enabled = false` — hide the automation flag.
-- Disable `marionette`-leaking heuristics where possible.
-- Do not enable headless mode. The user is supposed to see and drive
-  the browser.
-
-Profile selection:
-
-- **Default:** fresh, temporary profile, deleted on session end. This
-  isolates the capture from the developer's real browsing history.
-- **Opt-in:** `--profile <path>` to point at an existing Firefox
-  profile, for "what does this site leak about me logged in" runs.
-
-### BiDi subscriptions
-
-WebDriver BiDi is the **only** capture mechanism in v1.0. No mitmproxy,
-no extensions. Subscribe to:
-
-- `network.beforeRequestSent`
-- `network.responseStarted`
-- `network.responseCompleted`
-- `network.fetchError`
-- `browsingContext.navigationStarted` /
-  `browsingContext.fragmentNavigated`
-- `log.entryAdded`
-- WebSocket events (`network.*` covers these in current BiDi).
-
-For each event, normalize the BiDi payload into the bundle's event
-schema and append to the `events.jsonl` writer.
-
-Request **and** response bodies are captured via BiDi's data-collector
-mechanism (``network.addDataCollector``) with a configurable per-body
-size cap (default 256 KB). This is required for tracker analysis —
-analytics endpoints like Clarity, Sentry, HubSpot forms, and Snowplow
-ship the payload that matters in POST bodies; capturing only URL +
-headers gives a misleadingly thin picture of what data the site is
-sending. Bodies that exceed the size cap are truncated browser-side
-to bound bundle size; raise the cap for full session-replay capture
-at the cost of bundle size.
-
-### Storage snapshot
-
-`localStorage` / `sessionStorage` / `document.cookie` are not visible
-via BiDi network events. Capture them by injecting JavaScript:
-
-```python
-driver.execute_script("""
-    return {
-        local:   Object.fromEntries(Object.entries(localStorage)),
-        session: Object.fromEntries(Object.entries(sessionStorage)),
-        cookie:  document.cookie,
-    };
-""")
-```
-
-Cookies with `HttpOnly` set will not appear via `document.cookie`. Use
-`driver.get_cookies()` in addition to capture the HTTP-visible ones.
-
-Snapshot triggers:
-
-- Immediately before every navigation (catches what the previous page
-  wrote).
-- Immediately after every navigation has settled.
-- On session end.
-
-Per-origin: iterate the origins the page has touched. For the simple
-v1.0 case, snapshot the top-level document's origin plus any same-tab
-navigated origins.
-
-### Recorder
-
-Orchestrates a session:
-
-1. Build the driver.
-2. Open a BiDi session, attach all subscriptions.
-3. Open a writer for `events.jsonl`.
-4. Navigate to the target URL.
-5. Block on the user closing the browser (or pressing Ctrl-C in the
-   CLI). While blocked, events flow into the writer asynchronously.
-6. On exit: take a final storage snapshot, hand off to the bundle
-   writer, clean up the temp profile.
-
----
-
-## Component 2 — bundle (`leak_inspector.bundle`)
-
-The shared contract between capture and analysis. Owns:
-
-- **Event dataclasses.** One class per event `type` from the spec
-  above, plus a base `Event` and a `parse_event(dict) -> Event`
-  factory. Modules consume these dataclasses, never raw dicts.
-- **Manifest dataclass.** Mirrors the `manifest.json` schema; includes
-  the `bundle_schema` constant the rest of the code reads.
-- **Writer.** Given a working directory, validates the manifest, zips
-  it, deletes the working directory. Fails loudly if a required field
-  is missing rather than producing a broken bundle.
-- **Reader.** Opens a bundle zip, parses `manifest.json`, streams
-  `events.jsonl` line by line yielding parsed `Event` objects. Storage
-  snapshot files are loaded lazily on demand (a module that doesn't
-  care about storage shouldn't pay for it).
-
-Keep `capture` and `analysis` strictly downstream of `bundle`. No
-type defined in `capture` should appear in `analysis` and vice
-versa — they meet only in `bundle`.
-
----
-
-## Component 3 — analysis (`leak_inspector.analysis`)
-
-### Module framework (`modules/base.py`)
-
-Salvage the proven shapes from the previous `har_inspector` codebase:
-
-- `ParamInfo` (key, value, category, meaning, privacy_impact,
-  event_index).
-- `Hit` (module_id, module_name, url, host, method, response_status,
-  started_at, params, events).
-- Category constants (`CAT_PII`, `CAT_IDENTIFIER`, `CAT_BEHAVIORAL`,
-  `CAT_CONSENT`, `CAT_CONTENT`, `CAT_TECHNICAL`, `CAT_OTHER`).
-- A `register()` / `all_modules()` / `detect()` global registry.
-
-The module interface for v1.0:
-
-```python
-class TrackerModule(ABC):
-    module_id: str
-    name: str
-    vendor: str
-
-    def matches(self, event: RequestEvent) -> bool: ...
-    def parse(self, event: RequestEvent) -> Hit: ...
-```
-
-The bundled v1.0 modules — `ga4`, `google_fonts`, `clarity` — port
-from the old codebase by swapping `HarRequest` for `RequestEvent`
-and mapping field names. The parameter dictionaries inside each
-module do not change.
-
-### Runner
-
-Iterate the bundle's event stream. For each `RequestEvent`, call
-`detect()` and dispatch to the matching module. Collect `Hit`s into an
-`Analysis` result holding:
-
-- Per-module hit lists.
-- Unique parameter keys per module.
-- Category counts per module.
-- A first-party / third-party classification for every host observed,
-  derived from the manifest's `base_domain` via `tldextract` (already
-  a dependency in `pyproject.toml`) to handle public suffixes correctly.
-
-### Dedup rule (reporting only)
-
-> Collapse repeat hits by `(module_id, endpoint, param-key-set,
-> event-type)`. A new endpoint, a new param key, a new event type, or
-> a new module triggers a fresh full report entry.
-
-Implement this in the analysis layer as a "representative hit"
-picker, not in the modules themselves. The raw event stream and full
-hit list stay accessible in the JSON output for drill-down.
-
----
-
-## Component 4 — report (`leak_inspector.report`)
-
-Two reporters, both reading the same `Analysis` object:
-
-- `text.py` — terminal output with optional ANSI color. One section
-  per module: total hits, unique param keys, category breakdown, one
-  representative hit per endpoint with every parameter classified.
-- `json_reporter.py` — machine-readable, includes the full un-deduped
-  hit list so downstream tooling can drill in.
-
----
-
-## CLI (`leak_inspector.cli`)
-
-The `pyproject.toml` already exposes the entrypoint as
-`leak-inspector`. The README documents the surface; for v1.0,
-implement these subcommands:
-
-```bash
-# Capture a session. Opens Firefox, waits for the user to finish.
-leak-inspector capture --label news-site \
-    [--url https://example.com] \
-    [--out captures/] \
-    [--profile /path/to/firefox/profile]
-
-# Analyze a previously captured bundle.
-leak-inspector analyze captures/news-site-2026-05-22T10-40-00Z.zip \
-    [--format text|json] [--no-color] [--verbose]
-
-# Compare two captures (e.g. consent granted vs refused).
-leak-inspector diff full.zip minimal.zip [--format text|json]
-
-# List registered tracker modules.
-leak-inspector modules
-```
-
-The `diff` command reports, per module, which parameter keys appeared
-only in the first bundle, only in the second, and in both — mirroring
-the diff behavior of the old `har_inspector`. It is implemented in the
-analysis layer by running each bundle through the same pipeline and
-comparing the resulting `Analysis` objects.
-
-No flags beyond these in v1.0. Resist the urge to add watch mode,
-batch mode, or live-tail — they are not on the v1.0 list.
-
----
-
-## Definition of done for v1.0
-
-A v1.0 build must satisfy all of the following:
-
-1. `leak-inspector capture --label X --url <url>` opens a real Firefox
-   window, lets a user browse, and on exit writes a valid bundle zip.
-2. The bundle contains a parseable `manifest.json`, at least one
-   `request` event, at least one `storage_snapshot` event, and at
-   least one entry in `storage/<origin>.json`.
-3. `leak-inspector analyze <bundle.zip>` runs the three bundled
-   modules (`ga4`, `google_fonts`, `clarity`) and produces both text
-   and JSON reports without error against a real capture of a site
-   known to use those trackers.
-4. `leak-inspector diff full.zip minimal.zip` reports per-module
-   parameter-key diffs.
-5. The dedup rule above is applied to the text report.
-6. The `dom.webdriver.enabled = false` stealth pref is confirmed by
-   running against `https://bot.sannysoft.com/` (or equivalent) and
-   observing that automation indicators do not trip.
-7. A fresh profile is used by default; passing `--profile` honors the
-   given profile path.
-
----
-
-## v1.1 — identifier propagation (outline)
-
-Goal: detect when an identifier stored in `localStorage`,
-`sessionStorage`, or a cookie subsequently appears in an outbound
-third-party request.
-
-Approach, at a glance:
-
-- Extend the event-stream consumer to keep a per-origin map of
-  observed storage values.
-- For each outbound `RequestEvent`, scan the URL, headers, and body
-  for matches against known stored values (allow encoding variants:
-  raw, URL-encoded, base64).
-- Surface matches in reports as a "propagation" finding linking
-  source storage key → destination host/endpoint.
-
-No new bundle fields required — v1.1 is purely an analysis-side
-change on top of v1.0 captures.
-
----
-
-## v1.2 — CNAME cloaking detection (outline)
-
-Goal: flag requests whose apparently first-party hostname is in fact
-a CNAME alias of a known tracker.
-
-Approach, at a glance:
-
-- Ship a bundled CNAME blocklist (community-maintained lists exist;
-  pick one with a compatible license).
-- During capture, additionally record the resolved CNAME chain per
-  observed host. Selenium does not expose this directly; resolve via
-  a Python DNS library at capture time.
-- Add a `dns` event type to the bundle schema; bump
-  `bundle_schema` to 2 and keep loader compatibility for v1 bundles.
-- In analysis, mark hits whose host appears in the blocklist's
-  cloak-target set.
-
----
-
-## Explicit non-goals
-
-These are deliberately out of scope and should not be added without
-discussion:
-
-- Headless or scripted browsing.
-- Browsers other than Firefox.
-- Always-on monitoring or active blocking.
-- Server-side leak detection (server-side GTM, Zaraz, server-side
-  forwarding). These are a known browser-side blind spot; reports
-  may flag *likely* server-side forwarding but cannot confirm it.
-- Mobile or native apps.
-- A Firefox WebExtension. The Python-via-Selenium path is the chosen
-  approach; a parallel JS codebase is not justified.
-
----
-
-## Working on this codebase
-
-Code standards are owned by [CLAUDE.md](./CLAUDE.md). The short
-version: PEP 8 + PEP 257 + type hints, small focused modules, no
-speculative abstractions, ask when scope is ambiguous.
+# wcag-checker — project design
+
+`wcag-checker` records a real, human-driven Firefox session and audits
+the pages the operator chooses for **WCAG 2.2 AA** conformance. It is a
+fork of the `leak_inspector` privacy tool, mid-conversion: it keeps that
+tool's browser-capture core (Selenium + Firefox + WebDriver BiDi) and its
+report-shape philosophy, and replaces the tracker-analysis pipeline with
+accessibility auditing.
+
+This document is the design reference. `CLAUDE.md` is the working-rules
+anchor; `leak_inspector/wcag/core.py` is the authoritative source for the
+criteria registry. Where this file and the code disagree, the code wins —
+update this file.
+
+## The key design decision: audit live, not offline
+
+The fork's model was **capture now, analyze offline later**: record every
+request/response into a bundle, then run tracker modules over the frozen
+bundle with no browser in the loop. That works for network traffic
+because the bytes are the evidence.
+
+Accessibility is different. The evidence for most WCAG criteria exists
+*only in a live, fully-rendered browser*:
+
+- **Colour contrast** (1.4.3/1.4.6) needs computed styles — resolved
+  colours, fonts, and sizes after CSS cascade — not raw HTML.
+- **Focus behaviour** (2.4.7/2.4.11, 2.1.2, 2.4.3) only exists while the
+  page is interactive: you must move focus and observe what changes.
+- **Target size** (2.5.8) needs laid-out bounding boxes.
+- **Interaction-revealed content** — menus, dialogs, consent banners,
+  client-side-rendered views — isn't in the initial DOM at all.
+
+So `wcag-checker` departs from the fork: the audit runs **on the live
+driver at the instant the operator presses the hotkey**, against exactly
+the page state a real visitor is looking at. There is no offline
+re-analysis phase — the judgement happens in the browser, and only the
+findings are persisted.
+
+## End-to-end flow
+
+1. `wcag-checker <url> --out reports/` launches Firefox (BiDi enabled,
+   visible window) and navigates to the URL.
+2. The operator browses normally — clicking through flows, opening
+   menus, dismissing or accepting banners, navigating between pages.
+3. On any page worth checking, the operator presses the **audit hotkey**
+   (`Ctrl+Alt+A`). The tool audits the current live page: axe-core scan
+   + keyboard-navigation checks + an evidence screenshot. Findings are
+   tagged with the page URL and accumulated in memory. The operator can
+   press it on as many pages (or page states) as they like.
+4. Closing the Firefox window ends the session. The tool writes the
+   report set to `--out`.
+
+Nothing is scripted or headless: focus and keyboard behaviour need a
+real desktop and a window a human is driving.
+
+## The hotkey mechanism
+
+Reused verbatim from the fork's screenshot signal (see
+`leak_inspector/capture/bidi.py`). At session start, a BiDi **preload
+script** is injected into every browsing context. It binds the hotkey on
+the document capture phase (so it fires before any page handler) and, on
+press, issues a `fetch()` to a reserved `*.invalid` **sentinel host**
+carrying the page host in a `?host=` query.
+
+`.invalid` is RFC-2606-reserved, so the host never resolves — but BiDi's
+`network.beforeRequestSent` fires *before* the fetch is even attempted.
+The capture layer catches that request, **suppresses it** from the event
+stream at every stage of the request lifecycle, and fires a Python
+callback. That callback is the audit trigger: no OS-level keyboard hooks,
+no extra subscriptions, no traffic leaking into results — a clean in-band
+keypress → Python signal.
+
+The fork bound `Ctrl+Alt+S` to grab a screenshot; `wcag-checker` binds
+`Ctrl+Alt+A` to run an audit (which also captures a screenshot as
+evidence). `Ctrl+Shift+S` is deliberately avoided — it's Firefox's own
+screenshot shortcut, and `preventDefault` in a page handler does not
+block Firefox chrome shortcuts.
+
+## Modules and boundaries
+
+Everything WCAG-specific lives under `leak_inspector/wcag/` (the
+importable package is still named `leak_inspector` during conversion; the
+user-facing command is `wcag-checker`).
+
+- **`core.py`** — driver-free dataclasses (`WcagCriterion`, `Finding`)
+  and `CRITERIA_REGISTRY`, all 87 WCAG 2.2 success criteria tagged with
+  level (A/AA/AAA) and automatability tier. The single source of truth
+  for coverage claims. Imports nothing browser- or driver-specific.
+- **`axe_runner.py`** — wraps the axe-core engine via
+  `axe-selenium-python` (bundles axe-core 4.10.2). Injects axe, runs it
+  with the AA tag set, and normalizes violations + incomplete results
+  into `Finding` objects. Any rule suppression carries an inline comment
+  justifying the false-positive reasoning — findings are never silenced
+  just to make a run green.
+- **`keyboard_nav.py`** — the focus/keyboard-flow checks axe-core
+  deliberately skips, the highest-value custom code:
+  - focus visibility (2.4.7 / 2.4.11)
+  - no keyboard trap (2.1.2)
+  - tab / focus order vs. visual order (2.4.3)
+  - target size (2.5.8)
+- **`manual_checklist.py`** — generates the human-review checklist for
+  the criteria that cannot be asserted automatically (the majority),
+  pre-filled per page with the URL and any `needs-review` findings.
+- **`reporter.py`** — merges findings grouped by WCAG criterion (not by
+  rule id) and renders the output formats, always with a coverage
+  summary. Pure: findings in, strings out.
+- **Session runner + CLI** — orchestrates launch → per-hotkey live audit
+  → report, and writes the files.
+
+Clean-boundary rules:
+
+- `core` imports none of the others; everything may import `core`.
+- `axe_runner` and `keyboard_nav` take a **live driver handle from the
+  caller** and run against it. They never launch, configure, or close the
+  browser — the session layer owns the driver lifecycle.
+- `reporter` is pure — it touches no network, driver, or filesystem. The
+  CLI writes the files.
+- `capture` drives the browser and raises the hotkey signal; it does not
+  import `wcag`. The session runner wires the callback.
+
+## WCAG methodology & automatability tiers
+
+WCAG 2.2 defines 87 success criteria. Empirically ~30% are fully
+automatable, ~10% partially, and ~60% require human judgement.
+`core.py` tags every criterion with one tier:
+
+- **`full`** — a tool can decide the automatable substance on its own
+  (contrast, `lang` presence, name/role/value, page title, bypass
+  blocks). A machine pass is meaningful evidence.
+- **`partial`** — a tool flags *candidates*; a human confirms (link-text
+  quality, reflow, target size, focus order, headings/labels).
+- **`manual`** — needs human judgement; no assertion is emitted, only a
+  checklist item (meaningful-vs-present alt text, error-message quality,
+  plain language, media alternatives, consistent navigation).
+
+The central honesty stance: **a clean automated run is not conformance.**
+A `full`-tier pass means only that the automatable part found no defect —
+it says nothing about the criterion's manual aspects. The tiers describe
+*coverage*, never conformance, and every report states this explicitly.
+Never claim automated coverage of a criterion the engine cannot actually
+decide; when unsure, a criterion is `manual`.
+
+axe-core is run with the AA tag set:
+`wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`, `wcag22aa`.
+
+## Report structure
+
+Written to the `--out` directory on session close:
+
+- **`results.json`** — the canonical machine-readable record: every
+  finding (criterion, severity, message, selector, page URL), the pages
+  audited, and the coverage summary. All other formats derive from it.
+- **text** — a terminal-readable report.
+- **Markdown** — a shareable report.
+- **HTML** — a single self-contained page (inline CSS, no external
+  assets), suitable for opening in a browser or attaching to a ticket.
+- **manual checklist** — the human-review items for the non-automatable
+  criteria, per audited page.
+- **evidence screenshots** — one per hotkey press, referenced by the
+  report.
+
+Findings are **grouped by WCAG success criterion**, not by axe rule id,
+so a reader sees the report in the vocabulary of the standard. Severity
+is `error` (definite failure), `warning` (lower-impact definite failure),
+or `needs-review` (a candidate the tool cannot confirm — axe "incomplete"
+results and partial-tier keyboard checks). Every report leads with a
+**coverage summary**: how many criteria were actually exercised, and the
+standing reminder that manual review is still required.
+
+## Non-goals
+
+- **Headless / scripted browsing** — focus and keyboard behaviour need a
+  real desktop and a visible, human-driven window.
+- **Browsers other than Firefox.**
+- **Screen-reader announcement testing** (NVDA/JAWS/VoiceOver scripting)
+  — marked manual.
+- **Content-quality heuristics** (plain language, error-message
+  helpfulness) — marked manual; shipping a noisy heuristic is worse than
+  an honest checklist item.
+- **Always-on monitoring** and **active remediation** — this audits, it
+  does not fix or continuously watch.
+- **PDF export.**
+- **Silent axe suppressions** — every exclusion needs a justifying
+  comment.
+
+## Stack
+
+- Python ≥ 3.12, fully synchronous.
+- Runtime deps: `selenium`, `axe-selenium-python` (bundles axe-core
+  4.10.2), `pillow` (screenshot handling).
+- System deps: Firefox + geckodriver (auto-provisioned by Selenium
+  Manager).
+- Tests: `pytest`, hermetic (no live browser / network) for the pure
+  logic; live checks guarded on Firefox availability.
+- License: **GPL-3.0-or-later**.

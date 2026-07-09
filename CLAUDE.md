@@ -4,59 +4,82 @@ Guidelines for Claude when working in this repository.
 
 ## This project
 
-The goal of this project is to record a real, human-driven browsing
-session in Firefox and analyze what data the visited website (and the
-third parties it loaded) collected about the user.
+`wcag-checker` records a real, human-driven browsing session in Firefox
+and audits the visited pages for **WCAG 2.2 AA** accessibility
+conformance. The operator opens the tool on a URL, browses the site
+normally, and presses an **audit hotkey** on any page they want checked.
+At that moment the tool runs an accessibility audit against the *live,
+fully-rendered* page — the state a real visitor sees, including content
+behind interaction, consent banners, and client-side rendering. When the
+operator closes the browser, a report is written.
 
-If you don't have enough information online or are not able to reliably certain create a module, don't speculate. Only base your modules on certain data.
+This is a fork of the `leak_inspector` privacy tool. It reuses that
+tool's browser-capture core (Selenium + Firefox + WebDriver BiDi) and its
+report-shape philosophy, but replaces the entire tracker-analysis
+pipeline with WCAG auditing.
 
-Architecture:
+If you don't have enough information online or cannot reliably build a
+module, don't speculate. Only base modules on certain data. In
+particular, never claim automated coverage of a WCAG criterion that the
+underlying engine cannot actually decide — an honest "needs manual
+review" is always better than a false pass.
 
-- **Capture** (`leak_inspector/capture/`) — Selenium + Firefox driven
-  via geckodriver, using WebDriver BiDi for event subscription. Stealth
-  prefs hide automation so trackers fire normally. The user clicks
-  around manually; the tool records.
-- **Bundle** (`leak_inspector/bundle/`) — capture writes a
-  self-contained, schema-versioned JSON bundle (`manifest.json` +
-  `events.jsonl` + `storage/<origin>.json` + `scripts/<sha256>`), zipped
-  on export.
-- **Enrichment** (`leak_inspector/enrichment/`) — the live-network
-  phase, run once right after capture (or retrofitted via
-  `leak-inspector enrich`): DNS posture, transport probes, CMS
-  version probe, `security.txt` presence, per-host IP/ASN/geo.
-  Results are stored *inside* the
-  bundle zip as `enrichment.json`, timestamped, so the posture is
-  contemporaneous with the browsing session.
-- **Analysis** (`leak_inspector/analysis/`) — iterates bundle events,
-  dispatches to tracker modules, derives first-party vs third-party
-  via Public Suffix List. Strictly offline: all network-derived data
-  comes from the stored enrichment; un-enriched bundles analyze fine
-  but carry no posture (reports say so).
-- **Modules** (`leak_inspector/modules/`) — pluggable tracker detectors
-  that classify each parameter by category (PII, identifier,
-  behavioral, technical, consent, content, other).
-- **Report** (`leak_inspector/report/`) — text + JSON. Repeat hits are
-  deduplicated by `(module, endpoint, parameter-key-set, event-type)`;
-  the raw stream remains available for drill-down.
-- **TDD** (`tests/`) — Using test driven development, we build tests for every new feature that gets added.
+## Architecture
+
+- **Capture / session** (`leak_inspector/capture/`) — Selenium drives
+  Firefox via geckodriver, using WebDriver BiDi. The user clicks around
+  manually; the tool holds the session open and listens for the audit
+  hotkey. Reused from the fork mostly unchanged.
+- **Hotkey trigger** (`leak_inspector/capture/bidi.py`) — a BiDi preload
+  script injected into every browsing context binds the audit hotkey
+  (`Ctrl+Alt+A`). The keypress fires a `fetch()` to a reserved
+  `.invalid` sentinel host; BiDi's `network.beforeRequestSent` catches
+  it, suppresses it, and fires a Python callback. This is the same
+  in-band keypress→callback signal the fork used for screenshots — no
+  OS-level hooks needed.
+- **WCAG audit** (`leak_inspector/wcag/`) — runs on the live driver when
+  the hotkey fires:
+  - `core.py` — driver-free dataclasses (`WcagCriterion`, `Finding`) and
+    the WCAG 2.2 criteria registry with per-criterion automatability tier
+    (`full` / `partial` / `manual`). The single source of truth for
+    coverage claims. No driver import.
+  - `axe_runner.py` — wraps the axe-core engine (via
+    `axe-selenium-python`) and normalizes its violations/incomplete
+    results into `Finding` objects. Takes the driver as-is; never creates
+    or owns the browser session.
+  - `keyboard_nav.py` — focus/keyboard-flow checks axe-core deliberately
+    skips (focus visibility, keyboard traps, tab order, target size).
+    The highest-value custom code.
+  - `manual_checklist.py` — generates the human-review checklist for the
+    majority of criteria that cannot be asserted automatically.
+  - `reporter.py` — merges findings grouped by WCAG criterion and renders
+    JSON (canonical) + text + Markdown + HTML, always with a coverage
+    summary. Pure: findings in, strings out.
+- **Session runner + CLI** — orchestrates capture → per-page audit →
+  report. On window close, writes reports and a canonical `results.json`
+  to the output directory.
 
 Boundaries to keep clean:
 
-- `capture/` writes bundles. It does not import `analysis/` or
-  `modules/`.
-- `enrichment/` reads bundles and writes the bundle's enrichment
-  entry. It imports `dns_posture/`, `http_posture/` and `cms/`, never
-  `analysis/` or `modules/`. The CLI orchestrates capture→enrich;
-  `capture/` itself stays network-analysis-free.
-- `analysis/` reads bundles (including the stored enrichment). It
-  does not import `capture/` and never touches the network.
-- `bundle/` is shared by all, depends on none of them
-  (`bundle/reader`'s enrichment accessor lazily imports only the pure
-  `enrichment.artifact` data module — acyclic).
+- `core/` imports nothing browser- or driver-specific. Everything else
+  may import `core`; `core` imports none of them.
+- `axe_runner/` and `keyboard_nav/` take a live driver handle from the
+  caller and run against it. They do not launch, configure, or close the
+  browser — the session layer owns that.
+- `reporter/` is pure: it consumes `Finding` lists + the registry and
+  emits text. It does not touch the network, the driver, or the
+  filesystem (the CLI writes the files).
+- `capture/` drives the browser and raises the hotkey signal. It does not
+  import `wcag/`; the session runner wires the callback.
 
-Explicit non-goals: headless/scripted browsing, browsers other than
-Firefox, always-on monitoring, active blocking, server-side leak
-detection.
+Explicit non-goals: headless/scripted browsing (focus and keyboard
+behavior need a real desktop and a visible window), browsers other than
+Firefox, screen-reader announcement testing (NVDA/JAWS/VoiceOver
+scripting — mark manual), content-quality heuristics (plain language,
+error-message helpfulness — mark manual, don't ship noise), and silent
+axe rule suppressions (every exclusion needs a justifying comment). A
+clean automated run does **not** imply WCAG conformance; the report
+always says so.
 
 ## Code standards
 
@@ -65,25 +88,39 @@ detection.
   - **PEP 257** — docstring conventions.
   - **PEP 484 / PEP 604** — type hints; annotate public functions and methods.
   - **PEP 20** (Zen of Python) — prefer simple, explicit, readable code.
-- Use a consistent formatter/linter style (e.g. `black`, `ruff`, or `flake8`) if one is already configured in the project; do not introduce new tooling without asking.
-- Write modular code, prefer small functions over large blobs
+- The codebase is fully synchronous — do not introduce async.
+- Match the existing style; do not introduce a new formatter/linter
+  without asking.
+- Write modular code, prefer small functions over large blobs.
 
 ## Documentation
 
 - Every module, public class, and public function gets a docstring (PEP 257).
 - Docstrings describe **purpose, inputs, outputs, and side effects** — not implementation details that the code already shows.
 - Keep inline comments rare and reserved for non-obvious *why*, not *what*.
+- Each WCAG check documents the criterion id(s) it supports in its docstring.
 - Update relevant docs (README, module docstrings) when behavior or interfaces change.
 - Create/use TODO.md in the project root when new tasks are added to a queue.
-- Create/use SBOM.md to maintain an SBOM and comment on the key processes
+- Create/use SBOM.md to maintain an SBOM and comment on the key processes.
 
 ## Modular development
 
 - Build small, focused modules with clear single responsibilities.
 - Keep functions short; extract helpers when a function does more than one thing.
 - Separate concerns: parsing, business logic, I/O, and presentation live in distinct modules.
-- Prefer pure functions where practical; isolate side effects.
+- Prefer pure functions where practical; isolate side effects (esp. the driver).
 - Public interfaces should be minimal and explicit; avoid leaking internals.
+
+## Testing (TDD)
+
+- Build a test for every new feature that gets added (`tests/`, pytest).
+- Unit tests are hermetic — no live browser, no network. Test the pure
+  decision logic (registry, axe-output normalization, keyboard-check
+  helpers, report rendering) against canned data and fixtures.
+- Each `keyboard_nav` check gets a known-good and known-bad fixture so
+  correctness isn't only validated against live external sites.
+- A check returns `list[Finding]` and never raises for "issues found" —
+  only for real execution errors (page crashed, selector failed).
 
 ## Scope discipline
 

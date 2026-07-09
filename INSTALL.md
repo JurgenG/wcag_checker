@@ -1,33 +1,41 @@
-# Installing leak_inspector
+# Installing wcag-checker
 
 This guide assumes **zero technical experience**. It walks you from a
-fresh computer to a working `leak_inspector` install. Pick the section
-for your operating system and follow it top to bottom — every command
-is meant to be copy-pasted, and there are checkpoints along the way so
-you can confirm each step worked before moving on.
+fresh computer to a working `wcag-checker` install. Pick the section for
+your operating system and follow it top to bottom — every command is
+meant to be copy-pasted, and there are checkpoints along the way so you
+can confirm each step worked before moving on.
 
 If something goes wrong at a checkpoint, that's the step to share with
-whoever helps you — not the final error, but the first checkpoint
-where the expected output didn't appear.
+whoever helps you — not the final error, but the first checkpoint where
+the expected output didn't appear.
 
-**What you'll end up with:** a program called `leak_inspector` that
-opens a Firefox window, lets you browse a website normally, records
-which third-party trackers loaded, and then prints a human-readable
-report.
+**What you'll end up with:** a program called `wcag-checker` that opens a
+Firefox window, lets you browse a website normally, and — whenever you
+press the audit hotkey (**Ctrl+Alt+A**, or **Ctrl+Option+A** on macOS) —
+checks the current page for WCAG 2.2 AA accessibility issues. When you
+close the browser, it writes a report (JSON, plain text, Markdown, a
+self-contained HTML page, and a manual-review checklist) plus screenshots
+of every page you audited.
 
 **A note about keeping your computer clean.** Almost everything this
-install needs goes into a single folder inside your home directory
-(`leak_inspector/`). Inside it, a hidden subfolder called `.venv/`
-holds a self-contained copy of Python's package manager and every
-package leak_inspector depends on. If you ever decide to remove the
-tool, deleting the `leak_inspector/` folder removes 99% of what was
+install needs goes into a single project folder. Inside it, a hidden
+subfolder called `.venv/` holds a self-contained copy of Python's package
+manager and every package wcag-checker depends on. If you ever decide to
+remove the tool, deleting the project folder removes 99% of what was
 installed. See [Uninstalling](#uninstalling) at the end for the full
 cleanup recipe.
 
 The only things that get installed system-wide are: **Python itself**,
-**Git** (for downloading the source), and (on macOS) **Homebrew** as
-the installer for the previous two. These are general-purpose tools
-many people want anyway — leaving them on your system has no impact.
+**Git** (for downloading the source), and (on macOS) **Homebrew** as the
+installer for the previous two. These are general-purpose tools many
+people want anyway — leaving them on your system has no impact.
+
+**You need a real desktop.** wcag-checker opens a *visible* Firefox
+window and measures things like keyboard focus and tab order, which only
+behave correctly on a normal graphical desktop. It is **not** a headless
+or server tool — run it on the computer you're physically sitting in
+front of, not over a plain SSH connection.
 
 **Estimated time:** 20–30 minutes for a first install.
 
@@ -39,7 +47,6 @@ many people want anyway — leaving them on your system has no impact.
 - [macOS](#macos)
 - [Linux](#linux)
 - [Verify the install worked](#verify-the-install-worked)
-- [Optional: PDF report export](#optional-pdf-report-export)
 - [Common problems](#common-problems)
 - [Uninstalling](#uninstalling)
 
@@ -61,7 +68,7 @@ Firefox window appears. Close it again.
 ### Windows step 2 — Install Python
 
 1. Go to <https://www.python.org/downloads/windows/>.
-2. Click "Latest Python 3 Release" (any 3.10 or newer is fine).
+2. Click "Latest Python 3 Release" (any 3.12 or newer is required).
 3. Scroll to the bottom of that page and download
    "Windows installer (64-bit)".
 4. Run the installer. **Important: tick the box "Add python.exe to
@@ -76,19 +83,20 @@ black window opens. Type:
 python --version
 ```
 
-Press Enter. You should see something like `Python 3.12.5`. If you
-see "command not found" or "is not recognized", the PATH checkbox
-was missed — re-run the installer, tick the box, and pick "Modify".
+Press Enter. You should see something like `Python 3.12.5` (it must be
+3.12 or newer). If you see "command not found" or "is not recognized",
+the PATH checkbox was missed — re-run the installer, tick the box, and
+pick "Modify".
 
-> **Tip:** use **cmd**, not PowerShell. PowerShell's default
-> character encoding for redirected output (`> file.html`) is UTF-16,
-> which corrupts the HTML reports leak_inspector writes. cmd uses
-> UTF-8 and works correctly. If you already opened PowerShell, close
-> it and open cmd instead.
+> **Tip:** use **cmd**, not PowerShell. PowerShell's default character
+> encoding for redirected output (`> file.html`) is UTF-16, which can
+> corrupt the HTML reports wcag-checker writes. cmd uses UTF-8 and works
+> correctly. (wcag-checker writes reports to files with `--out`, so this
+> only matters if you deliberately redirect output with `>`.)
 
 ### Windows step 3 — Install Git
 
-Git is the tool that downloads the leak_inspector source code.
+Git is the tool that downloads the wcag-checker source code.
 
 1. Go to <https://git-scm.com/download/win>.
 2. Download starts automatically.
@@ -103,29 +111,25 @@ git --version
 
 You should see something like `git version 2.45.0.windows.1`.
 
-### Windows step 4 — Download leak_inspector
+### Windows step 4 — Download wcag-checker
 
-In cmd:
+In cmd (replace `<your-repository-url>` with the address you were given):
 
 ```cmd
 cd %USERPROFILE%
-git clone https://codeberg.org/BeLibre/Leak_Detector.git leak_inspector
-cd leak_inspector
+git clone <your-repository-url> wcag-checker
+cd wcag-checker
 ```
 
-(If your copy comes from a different URL — for example a private
-fork — replace the URL above. Whoever sent you the project knows
-which one.)
-
-**Checkpoint:** you should now be inside a folder called
-`leak_inspector`. Type:
+**Checkpoint:** you should now be inside a folder called `wcag-checker`.
+Type:
 
 ```cmd
 dir
 ```
 
-You should see folders like `leak_inspector`, `tests`, `captures`,
-and files like `README.md` and `pyproject.toml`.
+You should see folders like `leak_inspector`, `tests`, and files like
+`README.md` and `pyproject.toml`.
 
 ### Windows step 5 — Set up a virtual environment
 
@@ -140,7 +144,7 @@ python -m venv .venv
 **Checkpoint:** your cmd prompt should now start with `(.venv)`. That
 means the sandbox is active.
 
-### Windows step 6 — Install leak_inspector
+### Windows step 6 — Install wcag-checker
 
 Still inside the same cmd window (the prompt should still show
 `(.venv)`):
@@ -151,16 +155,17 @@ pip install -e .
 
 Don't forget the dot at the end.
 
-This downloads about 20 small Python packages. The first time it can
-take 1–2 minutes.
+This downloads a handful of small Python packages (selenium,
+axe-selenium-python, pillow, and their dependencies). The first time it
+can take 1–2 minutes.
 
 **Checkpoint:** when it finishes, type:
 
 ```cmd
-leak-inspector --help
+wcag-checker --help
 ```
 
-You should see a list of commands (`capture`, `analyze`, `diff`).
+You should see the usage help for the tool.
 
 You're done. Jump to [Verify the install worked](#verify-the-install-worked).
 
@@ -235,17 +240,17 @@ brew install python@3.12
 python3 --version
 ```
 
-You should see something like `Python 3.12.5`.
+You should see something like `Python 3.12.5` (it must be 3.12 or newer).
 
-### macOS step 4 — Download leak_inspector
+### macOS step 4 — Download wcag-checker
+
+Replace `<your-repository-url>` with the address you were given:
 
 ```bash
 cd ~
-git clone https://codeberg.org/BeLibre/Leak_Detector.git leak_inspector
-cd leak_inspector
+git clone <your-repository-url> wcag-checker
+cd wcag-checker
 ```
-
-(Replace the URL if your copy comes from a different source.)
 
 **Checkpoint:**
 
@@ -259,7 +264,7 @@ You should see `leak_inspector`, `tests`, `README.md`,
 ### macOS step 5 — Set up a virtual environment
 
 A "virtual environment" is a sandbox folder inside the project that
-holds every Python package leak_inspector uses. Nothing gets installed
+holds every Python package wcag-checker uses. Nothing gets installed
 into your system-wide Python — deleting the project folder removes
 everything. Run:
 
@@ -271,7 +276,7 @@ source .venv/bin/activate
 **Checkpoint:** your Terminal prompt now starts with `(.venv)`. That
 means the sandbox is active.
 
-### macOS step 6 — Install leak_inspector
+### macOS step 6 — Install wcag-checker
 
 ```bash
 pip install -e .
@@ -281,10 +286,10 @@ Don't forget the dot at the end.
 **Checkpoint:**
 
 ```bash
-leak-inspector --help
+wcag-checker --help
 ```
 
-You should see a list of commands.
+You should see the usage help for the tool.
 
 Jump to [Verify the install worked](#verify-the-install-worked).
 
@@ -335,17 +340,17 @@ git --version
 ```
 
 You should see version numbers for all three. Python needs to be
-3.10 or newer.
+3.12 or newer.
 
-### Linux step 2 — Download leak_inspector
+### Linux step 2 — Download wcag-checker
+
+Replace `<your-repository-url>` with the address you were given:
 
 ```bash
 cd ~
-git clone https://codeberg.org/BeLibre/Leak_Detector.git leak_inspector
-cd leak_inspector
+git clone <your-repository-url> wcag-checker
+cd wcag-checker
 ```
-
-(Replace the URL if your copy comes from a different source.)
 
 **Checkpoint:**
 
@@ -359,7 +364,7 @@ You should see `leak_inspector`, `tests`, `README.md`,
 ### Linux step 3 — Set up a virtual environment
 
 A "virtual environment" is a sandbox folder inside the project that
-holds every Python package leak_inspector uses. Nothing gets installed
+holds every Python package wcag-checker uses. Nothing gets installed
 into your system-wide Python — deleting the project folder removes
 everything. Run:
 
@@ -371,7 +376,7 @@ source .venv/bin/activate
 **Checkpoint:** your prompt now starts with `(.venv)`. That means the
 sandbox is active.
 
-### Linux step 4 — Install leak_inspector
+### Linux step 4 — Install wcag-checker
 
 ```bash
 pip install -e .
@@ -381,76 +386,12 @@ Don't forget the dot at the end.
 **Checkpoint:**
 
 ```bash
-leak-inspector --help
+wcag-checker --help
 ```
 
-You should see a list of commands.
+You should see the usage help for the tool.
 
 Jump to [Verify the install worked](#verify-the-install-worked).
-
----
-
-## Optional: PDF report export
-
-By default, `leak-inspector analyze` produces a coloured terminal report or
-an HTML file. If you also want to export reports as PDF
-(`--format pdf`), one extra install step is needed.
-
-PDF export uses **WeasyPrint**, which has two parts:
-
-1. A Python package (installed with pip).
-2. A small set of native graphics libraries (cairo, pango, gdk-pixbuf)
-   that WeasyPrint uses to draw the page.
-
-### Python package
-
-Make sure your virtual environment is active (prompt shows `(.venv)`), then run:
-
-- **Windows / macOS / Linux:**
-
-  ```bash
-  pip install -e '.[pdf]'
-  ```
-
-  On **Windows cmd**, use double quotes instead:
-
-  ```cmd
-  pip install -e ".[pdf]"
-  ```
-
-### Native libraries
-
-**On Debian / Ubuntu / Mint / Pop!\_OS:**
-
-```bash
-sudo apt install -y libcairo2 libpango-1.0-0 libpangocairo-1.0-0 \
-     libgdk-pixbuf2.0-0 libffi-dev shared-mime-info
-```
-
-**On Fedora / Rocky / Alma / RHEL:**
-
-```bash
-sudo dnf install -y cairo pango gdk-pixbuf2 libffi
-```
-
-**On macOS (Homebrew):**
-
-```bash
-brew install cairo pango gdk-pixbuf libffi
-```
-
-**On Windows:** install the
-[GTK3 runtime for Windows](https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases)
-(the `.exe` installer). Accept the defaults.
-
-### Checkpoint
-
-```bash
-leak-inspector analyze captures/test.zip --format pdf --out report.pdf
-```
-
-A file `report.pdf` should appear in the current folder and open normally in
-a PDF viewer.
 
 ---
 
@@ -459,28 +400,32 @@ a PDF viewer.
 Still in the terminal where your prompt shows `(.venv)`, run:
 
 ```bash
-leak-inspector capture https://example.com --out captures/test.zip
+wcag-checker https://example.com --out reports/
 ```
 
-Three things should happen:
+The first time you run it, Selenium downloads a matching `geckodriver`
+automatically — that's expected and only happens once.
+
+Then several things should happen:
 
 1. A fresh Firefox window opens, showing `example.com`.
-2. Your terminal prints lines like `[capture] BiDi subscribed…`.
-3. You can click around in the browser. Nothing else captures it —
-   only you driving Firefox by hand.
+2. You can click around in the browser normally — you're driving it by
+   hand.
+3. **Press Ctrl+Alt+A** (Ctrl+Option+A on macOS) to audit the current
+   page. Your terminal prints a line confirming an audit ran for that
+   page.
 
-**To finish the capture: close the Firefox window.** The terminal
-prints something like `wrote captures/test.zip (16 KB)`.
+**To finish: close the Firefox window.** The terminal prints where it
+wrote the report, and a `reports/` folder now contains the results.
 
-Now analyze what was captured:
+Open the HTML report to review the findings:
 
-```bash
-leak-inspector analyze captures/test.zip
-```
+- **Windows:** `start reports\report.html`
+- **macOS:** `open reports/report.html`
+- **Linux:** `xdg-open reports/report.html`
 
-You should see a colored, structured report — an executive summary,
-a tracker breakdown, and a list of HTTP requests. `example.com` has
-almost no trackers, so the report will be short. That's expected.
+`example.com` is a tiny page with very few accessibility issues, so the
+report will be short. That's expected.
 
 **If you see all of the above:** the install worked.
 
@@ -488,7 +433,7 @@ almost no trackers, so the report will be short. That's expected.
 
 ## Common problems
 
-### "command not found: leak-inspector"
+### "command not found: wcag-checker"
 
 Your virtual environment isn't active. Look at your prompt: if it
 doesn't start with `(.venv)`, run:
@@ -498,14 +443,14 @@ doesn't start with `(.venv)`, run:
 
 (You need to do this every time you open a new terminal to use the
 tool. There's no harm in it — it just tells the terminal where to
-find `leak-inspector`.)
+find `wcag-checker`.)
 
 ### "geckodriver version 0.36.0 might not be compatible…"
 
 A warning, not an error. Selenium has noticed your Firefox is newer
-than the bundled geckodriver. In most cases it works anyway. If
-captures actually fail, delete the bundled geckodriver and re-run —
-Selenium will fetch a matching one:
+than the bundled geckodriver. In most cases it works anyway. If runs
+actually fail, delete the bundled geckodriver and re-run — Selenium
+will fetch a matching one:
 
 - **Windows:** delete `.venv\Lib\site-packages\selenium\webdriver\common\linux\geckodriver.exe`.
 - **macOS / Linux:** delete `.venv/bin/geckodriver`.
@@ -513,10 +458,9 @@ Selenium will fetch a matching one:
 ### "ModuleNotFoundError: No module named 'leak_inspector'"
 
 The `pip install -e .` step didn't complete or wasn't run inside the
-`leak_inspector` folder. Make sure you're in the right folder
-(`pwd` on macOS/Linux, `pwd` or `cd` on Windows shows it) and that
-the virtual environment is active, then run `pip install -e .`
-again. Don't forget the dot at the end.
+project folder. Make sure you're in the right folder (`pwd` on
+macOS/Linux shows it) and that the virtual environment is active, then
+run `pip install -e .` again. Don't forget the dot at the end.
 
 ### Firefox opens but immediately closes / never appears
 
@@ -525,36 +469,38 @@ Two common causes:
 - **Firefox is the Ubuntu Snap version.** Snap-Firefox cannot be
   driven by Selenium reliably. Install the regular Firefox from
   Mozilla's PPA, or use `firefox-esr` from `apt`.
-- **You're running over SSH or in a server without a display.**
-  leak_inspector needs a real desktop — it's not a headless tool.
-  Run it on the same computer you're physically sitting in front
-  of.
+- **You're running over SSH or on a server without a display.**
+  wcag-checker needs a real desktop — it opens a visible window and
+  measures keyboard focus behavior, so it cannot run headless. Run it
+  on the computer you're physically sitting in front of.
+
+### The audit hotkey does nothing
+
+Make sure the Firefox window that wcag-checker opened has focus (click
+into the page first), then press **Ctrl+Alt+A** (Ctrl+Option+A on
+macOS). The audit runs against whatever page is currently showing — you
+can press it once per page you want checked.
 
 ### "permission denied" when running commands
 
-You shouldn't need `sudo` for any leak_inspector command. If you
-see permission errors during `pip install`, your virtual environment
-isn't active — re-activate it (see the first item in this list).
+You shouldn't need `sudo` for any wcag-checker command. If you see
+permission errors during `pip install`, your virtual environment isn't
+active — re-activate it (see the first item in this list).
 
-### Windows: my saved HTML report shows `��` and spaces between every letter
+### My saved HTML report shows `��` and spaces between every letter
 
-Symptom: you ran something like
-`leak-inspector analyze bundle.zip --format html > report.html`
-in PowerShell, and the resulting file opens as garbled text with a
-`��` at the start.
+Symptom: you redirected output yourself in PowerShell (e.g. with `>`),
+and the resulting file opens as garbled text with a `��` at the start.
 
 Cause: PowerShell's `>` writes UTF-16 LE with a byte-order mark by
-default. leak_inspector outputs UTF-8. The encoding mismatch
-corrupts the file.
+default. wcag-checker outputs UTF-8. The mismatch corrupts the file.
 
-Fix: re-run the command in **cmd**, not PowerShell. Open the Start
-menu, type `cmd`, press Enter. cmd's `>` uses UTF-8 on modern
-Windows and the file will open correctly.
+Fix: use the `--out` option (which writes UTF-8 files directly) instead
+of redirecting with `>`, or re-run in **cmd** rather than PowerShell.
 
 ### Anything else
 
-Open an issue at <https://codeberg.org/BeLibre/Leak_Detector/issues>
-with:
+When asking for help, include:
 
 1. Your operating system and version (e.g. "Ubuntu 24.04",
    "macOS 14.5", "Windows 11").
@@ -568,31 +514,30 @@ with:
 Everything you did during this install can be undone. Pick the level
 of cleanup you want.
 
-### Level 1 — Just remove leak_inspector
+### Level 1 — Just remove wcag-checker
 
-This removes the tool, every captured browsing session, and every
-report. It does **not** touch Python, Firefox, or Git — keep those if
-you ever want to reinstall, or if other software on your computer
-uses them.
+This removes the tool, along with every report it wrote. It does **not**
+touch Python, Firefox, or Git — keep those if you ever want to reinstall,
+or if other software on your computer uses them.
 
 - **Windows (cmd):**
 
   ```cmd
   cd %USERPROFILE%
-  rmdir /s /q leak_inspector
+  rmdir /s /q wcag-checker
   ```
 
 - **macOS / Linux:**
 
   ```bash
   cd ~
-  rm -rf leak_inspector
+  rm -rf wcag-checker
   ```
 
-That's the whole leak_inspector footprint: one folder in your home
-directory. The virtual environment, the Python packages
-(`selenium`, `tldextract`, `dnspython`, `maxminddb`), every capture,
-every report — all of it lives inside that folder.
+That's the whole wcag-checker footprint: one folder in your home
+directory. The virtual environment, the Python packages (`selenium`,
+`axe-selenium-python`, `pillow`), and every report — all of it lives
+inside that folder.
 
 ### Level 2 — Also remove the system tools
 
@@ -625,10 +570,10 @@ Only do this if you're certain no other software needs them.
 
   Same caveat: don't remove `python3` or `git`.
 
-### Optional — remove the Firefox profile leak_inspector created
+### Optional — remove the Firefox profile wcag-checker created
 
-If you ran captures with `--profile` pointed at an existing Firefox
-profile, leak_inspector wrote cookies and storage into that profile.
-The default behaviour (no `--profile` flag) uses a fresh temporary
-profile that the operating system cleans up automatically — so unless
-you explicitly used `--profile`, there's nothing more to remove.
+If you ran audits with `--profile` pointed at an existing Firefox
+profile, wcag-checker used that profile in place. The default behaviour
+(no `--profile` flag) uses a fresh temporary profile that the operating
+system cleans up automatically — so unless you explicitly used
+`--profile`, there's nothing more to remove.
