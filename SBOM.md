@@ -8,11 +8,12 @@ this file whenever a dependency is added, removed, or version-bumped.
 
 Declared in `pyproject.toml`; installed by `pip install -e .`.
 
-| Package              | Version pin | License    | Purpose |
-|---                   |---          |---         |--- |
-| selenium             | >=4.20      | Apache-2.0 | WebDriver-BiDi browser-capture driver |
-| axe-selenium-python  | >=3.0       | MPL-2.0    | Wraps the axe-core accessibility engine (bundles axe-core 4.10.2, MPL-2.0) and injects it into the page |
-| pillow               | >=10        | MIT-CMU    | PNG → lossless-webp screenshot conversion for reports |
+| Package              | Version pin | License      | Purpose |
+|---                   |---          |---           |--- |
+| selenium             | >=4.20      | Apache-2.0   | WebDriver-BiDi browser-capture driver; also writes the per-finding element screenshots |
+| axe-selenium-python  | >=3.0       | MPL-2.0      | Wraps the axe-core accessibility engine (bundles axe-core 4.10.2, MPL-2.0) and injects it into the page |
+| tldextract           | >=5.1       | BSD-3-Clause | Registered-domain extraction used by the capture recorder |
+| dnspython            | >=2.4       | ISC          | DNS CNAME-chain resolution used by the capture recorder |
 
 Transitive dependencies are not enumerated here; generate a complete
 lock with `pip freeze` for release audits.
@@ -38,16 +39,18 @@ lock with `pip freeze` for release audits.
 | axe-core ruleset | ships inside `axe-selenium-python` | MPL-2.0 (axe-core 4.10.2) | The accessibility rules the tool runs. Injected into the live page and executed via `axe.run()`; the tool does not vendor its own copy. |
 
 The fork's `report/assets` (BeLibre logo, Twemoji font used for PDF
-export) are being removed: the WCAG HTML report is self-contained with
-inline CSS and needs no external font or logo assets.
+export) have been removed: the WCAG HTML report carries inline CSS and no
+remote assets. Its only local references are the element-evidence PNGs it
+writes alongside itself under `screenshots/`.
 
 ## License posture
 
 - This project: **GPL-3.0-or-later** (see `LICENSE`).
 - `axe-selenium-python` and the bundled axe-core engine are **MPL-2.0**,
   which is GPL-3.0-or-later-compatible.
-- `selenium` (Apache-2.0) and `pillow` (MIT-CMU) are permissively
-  licensed and compatible with GPL-3.0-or-later distribution.
+- `selenium` (Apache-2.0), `tldextract` (BSD-3-Clause), and `dnspython`
+  (ISC) are permissively licensed and compatible with GPL-3.0-or-later
+  distribution.
 - Reports produced by the tool contain *user-supplied browsing content*
   and are not subject to the codebase's license.
 

@@ -55,12 +55,8 @@ git clone <your-repository-url> wcag-checker
 cd wcag-checker
 python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate.bat
-pip install -e .
-pip install axe-selenium-python    # audit engine (not yet a declared dep)
+pip install -e .                   # pulls in the axe-core engine too
 ```
-
-> `axe-selenium-python` is installed separately for now — it will move
-> into the package dependencies once packaging is finalized.
 
 ## Usage
 
@@ -190,12 +186,9 @@ a criterion with no automated finding is not a pass.
 
 The hand-driven, multi-page workflow (`wcag-checker` → browse → press
 `Ctrl+Alt+A` per page → close the window → report), with per-finding
-element screenshots, is now in place. Still to build:
-
-- **Packaging** — declare `axe-selenium-python` as a dependency (so the
-  separate install step goes away) and finalize `pyproject.toml`.
-
-Progress is tracked in [TODO.md](TODO.md).
+element screenshots, is in place, and `axe-selenium-python` now installs
+with the package. What remains is internal cleanup of privacy-tool
+leftovers still in the tree (see [TODO.md](TODO.md)).
 
 ## Scope / non-goals
 

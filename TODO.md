@@ -6,31 +6,25 @@ order; a clean automated run never implies conformance.
 
 ## Session state — resume here (last worked 2026-07-09)
 
-- **Branch:** `feature/screenshots` (branched off `main` after
-  `feature/session-runner` was fast-forward merged). Branch-style
+- **Branch:** `feature/packaging` (branched off `main` after
+  `feature/screenshots` was fast-forward merged). Branch-style
   development — start each new step on its own branch off `main`.
 - **Uncommitted on this branch, ready to commit:**
-  - `leak_inspector/wcag/screenshot.py` (new) — element-evidence gatherer
-  - `leak_inspector/wcag/core.py` — `Finding.screenshot` field added
-  - `leak_inspector/session.py` — `audit_page` captures evidence into
-    `<out>/screenshots/`; `SCREENSHOT_DIRNAME` constant
-  - `leak_inspector/wcag/reporter.py` — evidence in JSON/text/md/HTML
-  - `tools/wcag_smoke.py` — capture wired into `--out`; stale docstring
-    fixed
-  - `tests/test_wcag_screenshot.py` (new) + `tests/test_wcag_session.py`
-    (`audit_page` wiring)
-  - `README.md`, `TODO.md` (this file)
+  - `pyproject.toml` — the packaging pass (distribution renamed to
+    `wcag-checker`; deps/requires-python/classifiers/package-data)
+  - `README.md`, `INSTALL.md`, `SBOM.md`, `TODO.md` (this file) — updated
+    to match (single-step `pip install -e .`, dependency table)
 - **Tests:** full suite green — **369 passing**. Run with
   `. .venv/bin/activate && python -m pytest -q`.
-- **Verified live:** `tools/wcag_smoke.py https://www.publiq.be --out …`
-  produced 86 findings, all with an element PNG (84 distinct after
-  dedup), and every `report.html` thumbnail link resolves.
-- **Next build step:** the packaging pass (see Final cleanup) — declare
-  `axe-selenium-python`, raise `requires-python`, drop stale deps /
-  `report/assets` package-data.
-- **Env note:** venv at `.venv`; the audit engine still needs
-  `pip install axe-selenium-python` (not a declared dep yet — see Final
-  cleanup).
+- **Verified:** `pip install -e .` reinstalls as distribution
+  `wcag-checker` (Requires: axe-selenium-python, dnspython, selenium,
+  tldextract) and `wcag-checker --help` resolves.
+- **Next build step:** privacy-removal loose ends (see Final cleanup) —
+  `bundle/reader.py` dead `enrichment()` property, stale docstrings, and
+  the broken `bulk-tool/`. Then the "Additional features" manual-check
+  questions.
+- **Env note:** venv at `.venv`; `axe-selenium-python` is now a declared
+  dependency, so a plain `pip install -e .` pulls it in.
 
 ## Done
 
@@ -133,13 +127,19 @@ order; a clean automated run never implies conformance.
   - `bulk-tool/` — the privacy bulk scanner (imports `analysis`,
     `report`, …); now broken. Decide keep-and-port vs delete; its
     `datasets/` domain lists may be reusable for WCAG bulk auditing.
-- [ ] `pyproject.toml`: add `axe-selenium-python`, raise
-      `requires-python` to `>=3.12`, drop `maxminddb` (unused after
-      removal) and reassess `tldextract` / `dnspython` (still imported by
-      `capture/recorder.py` + `capture/dns.py`), and remove the
-      `report/assets` package-data (that dir is gone). Done already: the
-      console entry point is now `wcag-checker = leak_inspector.cli:main`.
-- [ ] Final README / SBOM pass once the tree reflects reality.
+- [x] `pyproject.toml` packaging pass: added `axe-selenium-python>=3.0`,
+      raised `requires-python` to `>=3.12` (dropped the 3.10/3.11
+      classifiers), dropped `maxminddb` and `pillow` (imported nowhere)
+      and the `pdf`/`weasyprint` optional group, removed the stale
+      `report/assets` package-data. Renamed the distribution to
+      `wcag-checker` (import package dir stays `leak_inspector/`) and
+      rewrote the description/keywords/classifiers for WCAG. `tldextract`
+      / `dnspython` are **kept** — `capture/recorder.py` (+ `capture/dns.py`)
+      still use them and are exercised by `tests/test_capture_*`. README +
+      INSTALL install steps and SBOM.md dependency table updated to match.
+- [ ] Final README / SBOM pass once the tree reflects reality — mostly
+      done alongside the packaging pass; revisit after the privacy-removal
+      loose ends above are closed.
 
 ## Additional features
 - [ ] Add step by step questions for a manual check of a page by a human

@@ -157,15 +157,13 @@ Still inside the same cmd window (the prompt should still show
 
 ```cmd
 pip install -e .
-pip install axe-selenium-python
 ```
 
-Don't forget the dot at the end of the first command. (`axe-selenium-python`
-is the audit engine; it's installed separately for now and will move into
-the package's own dependencies once packaging is finalized.)
+Don't forget the dot at the end. This also pulls in the axe-core audit
+engine (`axe-selenium-python`) and the rest of the dependencies.
 
 This downloads a handful of small Python packages (selenium,
-axe-selenium-python, pillow, and their dependencies). The first time it
+axe-selenium-python, and their dependencies). The first time it
 can take 1–2 minutes.
 
 **Checkpoint:** when it finishes, type:
@@ -289,11 +287,9 @@ means the sandbox is active.
 
 ```bash
 pip install -e .
-pip install axe-selenium-python
 ```
-Don't forget the dot at the end of the first command. (`axe-selenium-python`
-is the audit engine; it's installed separately for now and will move into
-the package's own dependencies once packaging is finalized.)
+Don't forget the dot at the end. This also pulls in the axe-core audit
+engine (`axe-selenium-python`) and the rest of the dependencies.
 
 **Checkpoint:**
 
@@ -392,11 +388,9 @@ sandbox is active.
 
 ```bash
 pip install -e .
-pip install axe-selenium-python
 ```
-Don't forget the dot at the end of the first command. (`axe-selenium-python`
-is the audit engine; it's installed separately for now and will move into
-the package's own dependencies once packaging is finalized.)
+Don't forget the dot at the end. This also pulls in the axe-core audit
+engine (`axe-selenium-python`) and the rest of the dependencies.
 
 **Checkpoint:**
 
@@ -496,11 +490,12 @@ run `pip install -e .` again. Don't forget the dot at the end.
 
 ### "ModuleNotFoundError: No module named 'axe_selenium_python'"
 
-The separate audit-engine step was skipped. With the virtual environment
-active, run:
+The audit engine ships as a dependency of the package, so this usually
+means `pip install -e .` didn't finish. With the virtual environment
+active, run it again:
 
 ```bash
-pip install axe-selenium-python
+pip install -e .
 ```
 
 ### Firefox opens but immediately closes / never appears
@@ -570,8 +565,8 @@ or if other software on your computer uses them.
 
 That's the whole wcag-checker footprint: one folder in your home
 directory. The virtual environment, the Python packages (`selenium`,
-`axe-selenium-python`, `pillow`), and every report — all of it lives
-inside that folder.
+`axe-selenium-python`, and their dependencies), and every report — all of
+it lives inside that folder.
 
 ### Level 2 — Also remove the system tools
 

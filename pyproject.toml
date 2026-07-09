@@ -3,66 +3,54 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "leak_inspector"
+name = "wcag-checker"
 version = "0.1.0"
-description = "Record a real human-driven Firefox browsing session and analyze what trackers and third-party services collected about the visitor — with board-ready GDPR-mapped findings, vendor-by-vendor breakdown, and CNAME-cloak detection."
+description = "Record a real human-driven Firefox browsing session and audit the visited pages for WCAG 2.2 AA accessibility conformance — axe-core plus keyboard/focus checks, with per-finding element screenshots and an honest coverage report."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = { file = "LICENSE" }
 authors = [
     { name = "Jurgen Gaeremyn", email = "jurgen@belibre.be" },
 ]
 keywords = [
-    "privacy",
-    "gdpr",
-    "tracker-detection",
-    "web-tracking",
-    "cookie-analysis",
-    "cname-cloaking",
-    "session-replay",
+    "wcag",
+    "wcag2",
+    "accessibility",
+    "a11y",
+    "web-accessibility",
+    "axe-core",
+    "audit",
     "selenium",
     "webdriver-bidi",
     "firefox",
-    "data-protection",
-    "schrems-ii",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
-    "Intended Audience :: Legal Industry",
     "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Topic :: Internet :: WWW/HTTP",
     "Topic :: Internet :: WWW/HTTP :: Browsers",
-    "Topic :: Security",
     "Topic :: Software Development :: Testing",
-    "Topic :: System :: Monitoring",
+    "Topic :: Software Development :: Quality Assurance",
 ]
 dependencies = [
     "selenium>=4.20",
+    "axe-selenium-python>=3.0",
     "tldextract>=5.1",
     "dnspython>=2.4",
-    "maxminddb>=2.5",
-    "pillow>=10",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7",
-]
-# PDF report export (analyze --format pdf). WeasyPrint also needs native
-# libraries (cairo, pango, gdk-pixbuf) — see its install docs.
-pdf = [
-    "weasyprint>=60",
 ]
 
 [project.scripts]
@@ -70,9 +58,6 @@ wcag-checker = "leak_inspector.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["leak_inspector*"]
-
-[tool.setuptools.package-data]
-leak_inspector = ["report/assets/*.svg", "report/assets/*.ttf"]
 
 [tool.setuptools]
 license-files = ["LICENSE"]
