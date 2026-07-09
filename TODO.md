@@ -4,6 +4,23 @@ Task queue for converting the `leak_inspector` privacy-tool fork into
 `wcag-checker`, a WCAG 2.2 AA accessibility auditor. Built in milestone
 order; a clean automated run never implies conformance.
 
+## Session state — resume here (last worked 2026-07-09)
+
+- **Branch:** `feature/manual-checklist` (branch-style development from
+  now on — start each new step on its own branch off `main`).
+- **Uncommitted on this branch, ready to commit:**
+  - `leak_inspector/wcag/manual_checklist.py` + `tests/test_wcag_manual_checklist.py` (new)
+  - `tools/wcag_smoke.py` — checklist wired into `--out` (writes `manual-checklist.md`)
+  - `README.md` (status table + report-output table now list the
+    checklist), `TODO.md` (this file)
+- **Tests:** full suite green — **349 passing**. Run with
+  `. .venv/bin/activate && python -m pytest -q`.
+- **Next build step:** Session runner + `wcag-checker` CLI (see Build
+  queue below).
+- **Env note:** venv at `.venv`; the audit engine needs
+  `pip install axe-selenium-python` (not a declared dep yet — see Final
+  cleanup).
+
 ## Done
 
 - [x] STEP-0 inspection of the fork (driver, packaging, conventions,
@@ -58,9 +75,14 @@ order; a clean automated run never implies conformance.
   - [ ] Reconcile 2.5.8 with axe: axe-core also tags a `target-size`
         rule `wcag22aa`, so this check may double-report under 2.5.8.
         Decide which owns it (or dedupe in the reporter).
-- [ ] `wcag/manual_checklist.py` — generate the human-review checklist
-      for the manual-tier (and partial-tier `needs-review`) criteria,
-      pre-filled per route with the URL. Not a test runner.
+- [x] `wcag/manual_checklist.py` — pure build-once/render-many:
+      `build_checklist` selects the in-scope manual + partial criteria (46
+      = 27 manual + 19 partial) and pairs them with the audited routes;
+      `render_markdown` (`manual-checklist.md`, checkboxes grouped per
+      page by tier) and `render_json` render it. Not a test runner — emits
+      review tasks, never pass/fail. Hermetic tests in
+      `tests/test_wcag_manual_checklist.py`; wired into
+      `tools/wcag_smoke.py --out`.
 - [ ] Session runner + `wcag-checker` CLI — reuse the capture driver and
       the BiDi hotkey signal to run a live per-page audit on `Ctrl+Alt+A`;
       accumulate findings in memory; write reports + `results.json` to

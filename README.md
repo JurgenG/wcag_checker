@@ -25,9 +25,10 @@ The tool is **mid-build**. Here is what works today and what does not:
 | axe-core audit (WCAG 2.2 AA rule tags) → findings | ✅ working |
 | Keyboard / focus checks axe skips (focus visible, keyboard trap, focus order, target size) | ✅ working |
 | Report renderer — `results.json` + text + Markdown + HTML, with coverage summary | ✅ working |
+| Manual-review checklist for the criteria tooling can't decide | ✅ working |
 | Single-page audit runner (`tools/wcag_smoke.py`) | ✅ working |
 | Interactive **hotkey** session (browse by hand, press `Ctrl+Alt+A` per page) | 🚧 not built yet |
-| `wcag-checker` console command, screenshots, manual-review checklist | 🚧 not built yet |
+| `wcag-checker` console command + per-audit screenshots | 🚧 not built yet |
 
 So today you audit **one page's rendered state at a time** through the
 `wcag_smoke.py` runner (below). The hand-driven, multi-page hotkey
@@ -137,6 +138,7 @@ With `--out DIR`, four views of the same audit are written:
 | `report.html` | Self-contained HTML — open it in any browser. Findings grouped by WCAG criterion, with the coverage summary. |
 | `report.md` | The same report as Markdown, for pasting into issues/wikis. |
 | `report.txt` | Plain-text report for the terminal. |
+| `manual-checklist.md` | The human-review checklist: the 46 A + AA criteria tooling cannot decide, as checkboxes grouped per audited page. |
 
 Findings carry one of three severities: **error** (a definite failure),
 **warning** (a lower-impact definite failure), and **needs-review** (a

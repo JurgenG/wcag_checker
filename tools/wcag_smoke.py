@@ -27,7 +27,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from leak_inspector.capture.driver import launch_driver
-from leak_inspector.wcag import axe_runner, keyboard_nav, reporter
+from leak_inspector.wcag import axe_runner, keyboard_nav, manual_checklist, reporter
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -55,6 +55,9 @@ def main(argv: list[str] | None = None) -> int:
     document = reporter.build_report(
         findings, urls=[args.url], generated_at=generated_at
     )
+    checklist = manual_checklist.build_checklist(
+        [args.url], generated_at=generated_at
+    )
 
     print(reporter.render_text(document))
 
@@ -71,6 +74,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         (args.out / "report.html").write_text(
             reporter.render_html(document), encoding="utf-8"
+        )
+        (args.out / "manual-checklist.md").write_text(
+            manual_checklist.render_markdown(checklist), encoding="utf-8"
         )
         print(f"Reports written to {args.out}")
     return 0
