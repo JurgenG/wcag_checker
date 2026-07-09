@@ -98,7 +98,10 @@ class Finding:
     human-readable description (checks fold the source rule id and any
     help URL into it). ``selector`` is a CSS selector for the offending
     element when one applies, else ``None``. ``url`` is the page the
-    finding was observed on.
+    finding was observed on. ``screenshot`` is the relative path to a PNG
+    of the offending element captured as evidence, or ``None`` when no
+    screenshot was taken (the finding has no element, or the element
+    could not be located/rendered at capture time).
 
     Checks return ``list[Finding]`` and never raise merely because they
     found issues — an empty list means "no issue detected", never
@@ -110,6 +113,7 @@ class Finding:
     message: str
     selector: str | None
     url: str
+    screenshot: str | None = None
 
 
 # --- WCAG 2.2 success-criteria registry ------------------------------------

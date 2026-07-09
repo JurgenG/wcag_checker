@@ -49,8 +49,12 @@ from selenium.common.exceptions import WebDriverException
 
 from .capture.bidi import BiDiCapture
 from .capture.driver import launch_driver
-from .wcag import axe_runner, keyboard_nav, manual_checklist, reporter
+from .wcag import axe_runner, keyboard_nav, manual_checklist, reporter, screenshot
 from .wcag.core import Finding
+
+#: Subdirectory of the output directory that per-finding element
+#: screenshots are written to.
+SCREENSHOT_DIRNAME = "screenshots"
 
 #: How often (seconds) the main loop polls for a closed window / pending
 #: audit request when idle.
@@ -76,15 +80,22 @@ class SessionResult:
     written: dict[str, Path]
 
 
-def audit_page(driver: Any, url: str) -> list[Finding]:
+def audit_page(
+    driver: Any, url: str, screenshot_dir: Path | str | None = None
+) -> list[Finding]:
     """Run both audit engines against the driver's current page.
 
     Combines the axe-core audit (:mod:`.wcag.axe_runner`) and the
     keyboard/focus checks (:mod:`.wcag.keyboard_nav`) into one finding
-    list, all labelled with ``url``. Impure: drives the live browser.
+    list, all labelled with ``url``. When ``screenshot_dir`` is given,
+    captures an element-level PNG for each finding into it
+    (:mod:`.wcag.screenshot`) while the page is still rendered. Impure:
+    drives the live browser and, with ``screenshot_dir``, writes PNGs.
     """
     findings = list(axe_runner.audit(driver, url))
     findings += keyboard_nav.run_all(driver, url)
+    if screenshot_dir is not None:
+        findings = screenshot.capture_findings(driver, findings, screenshot_dir)
     return findings
 
 
@@ -98,14 +109,17 @@ def run_session(
     """Drive a full interactive audit session and write the reports.
 
     Opens Firefox on ``target_url``, installs the audit hotkey, and audits
-    the live page on each ``Ctrl+Alt+A``. Blocks until the operator closes
-    the window, then writes the reports to ``output_dir`` and returns a
-    :class:`SessionResult`. ``headless`` runs without a visible window
-    (a real desktop is still recommended for accurate focus behaviour).
+    the live page on each ``Ctrl+Alt+A``, saving a PNG of every flagged
+    element to ``<output_dir>/screenshots/`` as evidence. Blocks until the
+    operator closes the window, then writes the reports to ``output_dir``
+    and returns a :class:`SessionResult`. ``headless`` runs without a
+    visible window (a real desktop is still recommended for accurate focus
+    behaviour).
     """
     audit_queue: queue.Queue[str] = queue.Queue()
     findings: list[Finding] = []
     audited_urls: list[str] = []
+    screenshot_dir = Path(output_dir) / SCREENSHOT_DIRNAME
 
     with launch_driver(headless=headless) as launched:
         driver = launched.driver
@@ -115,7 +129,10 @@ def run_session(
         try:
             driver.get(target_url)
             findings, audited_urls = _run_audit_loop(
-                driver, audit_queue, poll_interval=poll_interval, audit_fn=audit_page
+                driver,
+                audit_queue,
+                poll_interval=poll_interval,
+                audit_fn=lambda d, u: audit_page(d, u, screenshot_dir),
             )
         finally:
             with suppress(Exception):

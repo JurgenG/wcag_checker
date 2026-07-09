@@ -29,12 +29,12 @@ The tool is **mid-build**. Here is what works today and what does not:
 | Single-page audit runner (`tools/wcag_smoke.py`) | ✅ working |
 | Interactive **hotkey** session (browse by hand, press `Ctrl+Alt+A` per page) | ✅ working |
 | `wcag-checker` console command | ✅ working |
-| Per-audit screenshots as evidence | 🚧 not built yet |
+| Per-finding screenshots (a PNG of each flagged element as evidence) | ✅ working |
 
 The hand-driven, multi-page workflow — browse, press `Ctrl+Alt+A` on each
-page, close the window to get a report — now works via the `wcag-checker`
-command (below). The only piece still outstanding is saving a screenshot
-per audit as visual evidence.
+page, close the window to get a report — works via the `wcag-checker`
+command (below), and every finding is now saved with a screenshot of the
+offending element as evidence. What remains is the packaging pass.
 
 ## Requirements
 
@@ -78,8 +78,9 @@ What happens:
    log in, open menus, dismiss banners.
 2. On any page (or page *state*) you want checked, press **`Ctrl+Alt+A`**.
    The tool audits the DOM **as rendered at that instant** — axe-core's
-   WCAG 2.2 AA rules plus the keyboard/focus checks — and accumulates the
-   findings. Press it on as many pages as you like.
+   WCAG 2.2 AA rules plus the keyboard/focus checks — accumulates the
+   findings, and saves a PNG of each flagged element (the snippet with the
+   issue) to `reports/screenshots/`. Press it on as many pages as you like.
 3. **Close the Firefox window.** The reports for every audited page are
    written to `reports/`.
 
@@ -144,15 +145,17 @@ grouped by WCAG criterion:
 
 ## What the report contains
 
-With `--out DIR`, four views of the same audit are written:
+With `--out DIR`, four views of the same audit are written, plus a
+`screenshots/` directory of evidence:
 
 | File | What it holds |
 | --- | --- |
-| `results.json` | Canonical machine-readable result: every finding with criterion id, severity, message, and selector, plus the coverage summary. The source of truth the other formats render from. |
-| `report.html` | Self-contained HTML — open it in any browser. Findings grouped by WCAG criterion, with the coverage summary. |
+| `results.json` | Canonical machine-readable result: every finding with criterion id, severity, message, selector, and the path to its element screenshot, plus the coverage summary. The source of truth the other formats render from. |
+| `report.html` | HTML with inline styling — open it in any browser. Findings grouped by WCAG criterion, each with a thumbnail of the offending element, and the coverage summary. |
 | `report.md` | The same report as Markdown, for pasting into issues/wikis. |
 | `report.txt` | Plain-text report for the terminal. |
 | `manual-checklist.md` | The human-review checklist: the 46 A + AA criteria tooling cannot decide, as checkboxes grouped per audited page. |
+| `screenshots/` | One PNG per flagged element (the snippet with the issue), named so an element failing several criteria is captured once. Findings reference these by relative path. |
 
 Findings carry one of three severities: **error** (a definite failure),
 **warning** (a lower-impact definite failure), and **needs-review** (a
@@ -186,16 +189,12 @@ a criterion with no automated finding is not a pass.
 ## Roadmap
 
 The hand-driven, multi-page workflow (`wcag-checker` → browse → press
-`Ctrl+Alt+A` per page → close the window → report) is now in place. Still
-to build:
+`Ctrl+Alt+A` per page → close the window → report), with per-finding
+element screenshots, is now in place. Still to build:
 
-- **Per-audit screenshots** — save a PNG of each audited page state as
-  visual evidence alongside the findings.
 - **Packaging** — declare `axe-selenium-python` as a dependency (so the
   separate install step goes away) and finalize `pyproject.toml`.
 
-The `.invalid`-sentinel screenshot hotkey (`Ctrl+Alt+S`) is still present
-in the capture layer and is the natural hook for the screenshot feature.
 Progress is tracked in [TODO.md](TODO.md).
 
 ## Scope / non-goals

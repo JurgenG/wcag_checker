@@ -253,6 +253,7 @@ def render_json(document: ReportDocument) -> str:
                         "message": f.message,
                         "selector": f.selector,
                         "url": f.url,
+                        "screenshot": f.screenshot,
                     }
                     for f in report.findings
                 ],
@@ -301,6 +302,8 @@ def render_text(document: ReportDocument) -> str:
             lines.append(f"  [{finding.severity}] {finding.selector or '(page)'}")
             lines.append(f"      {finding.message}")
             lines.append(f"      {finding.url}")
+            if finding.screenshot:
+                lines.append(f"      evidence: {finding.screenshot}")
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
@@ -347,16 +350,37 @@ def render_markdown(document: ReportDocument) -> str:
         )
         lines.append("")
         for finding in report.findings:
+            evidence = (
+                f" [[evidence]]({finding.screenshot})" if finding.screenshot else ""
+            )
             lines.append(
                 f"- **{finding.severity}** `{finding.selector or '(page)'}` — "
-                f"{finding.message} ({finding.url})"
+                f"{finding.message} ({finding.url}){evidence}"
             )
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _evidence_cell(screenshot: str | None) -> str:
+    """Render the Evidence table cell: a thumbnail linking to the PNG.
+
+    The path is a report-relative reference to a local file (e.g.
+    ``screenshots/<file>.png``); ``None`` renders an em dash. The value is
+    HTML-escaped so a hostile selector-derived path cannot break out.
+    """
+    if not screenshot:
+        return "—"
+    src = html.escape(screenshot, quote=True)
+    return f"<a href='{src}'><img class='evidence' src='{src}' alt='element screenshot'></a>"
+
+
 def render_html(document: ReportDocument) -> str:
-    """Render a self-contained HTML page (inline CSS, no external assets)."""
+    """Render an HTML page with inline CSS and no external network assets.
+
+    The only local references are the element-evidence PNGs under
+    ``screenshots/`` (written beside the report); the page carries no
+    remote CSS, fonts, or scripts.
+    """
     summary = document.summary
     sev = summary.findings_by_severity
 
@@ -375,11 +399,12 @@ def render_html(document: ReportDocument) -> str:
         rows = "".join(
             "<tr class='sev-{sev}'>"
             "<td>{sev}</td><td><code>{sel}</code></td>"
-            "<td>{msg}</td><td>{url}</td></tr>".format(
+            "<td>{msg}</td><td>{url}</td><td>{evidence}</td></tr>".format(
                 sev=html.escape(f.severity),
                 sel=html.escape(f.selector or "(page)"),
                 msg=html.escape(f.message),
                 url=html.escape(f.url),
+                evidence=_evidence_cell(f.screenshot),
             )
             for f in report.findings
         )
@@ -391,7 +416,7 @@ def render_html(document: ReportDocument) -> str:
             f"<span class='status {report.status}'>"
             f"{html.escape(report.status.upper())}</span></h3>"
             "<table><thead><tr><th>Severity</th><th>Element</th>"
-            "<th>Message</th><th>URL</th></tr></thead>"
+            "<th>Message</th><th>URL</th><th>Evidence</th></tr></thead>"
             f"<tbody>{rows}</tbody></table></section>"
         )
 
@@ -432,6 +457,8 @@ th, td {{ border: 1px solid #ddd; padding: 0.4rem 0.6rem; text-align: left;
   vertical-align: top; font-size: 0.9rem; }}
 th {{ background: #f4f4f4; }}
 code {{ font-size: 0.85em; word-break: break-all; }}
+img.evidence {{ max-width: 200px; max-height: 120px; border: 1px solid #ccc;
+  display: block; }}
 .summary td, .summary th {{ white-space: nowrap; }}
 .tag {{ font-size: 0.75rem; color: #555; font-weight: normal; }}
 .status {{ font-size: 0.75rem; padding: 0.1rem 0.4rem; border-radius: 3px; }}

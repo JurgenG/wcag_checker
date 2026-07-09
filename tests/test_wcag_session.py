@@ -106,6 +106,41 @@ class TestRunAuditLoop:
         assert len(findings) == 1
 
 
+class TestAuditPage:
+    def test_captures_evidence_when_dir_given(self, monkeypatch) -> None:
+        from leak_inspector import session
+        from leak_inspector.wcag import axe_runner, keyboard_nav, screenshot
+
+        base = _finding("1.4.3", "error", "https://x/a")
+        monkeypatch.setattr(axe_runner, "audit", lambda d, u: [base])
+        monkeypatch.setattr(keyboard_nav, "run_all", lambda d, u: [])
+
+        calls: dict[str, object] = {}
+
+        def fake_capture(driver, findings, screenshot_dir):
+            calls.update(findings=findings, screenshot_dir=screenshot_dir)
+            return [_finding("1.4.3", "error", "https://x/a")]
+
+        monkeypatch.setattr(screenshot, "capture_findings", fake_capture)
+        out = session.audit_page("driver", "https://x/a", "shots")
+        assert calls["screenshot_dir"] == "shots"
+        assert calls["findings"] == [base]
+        assert len(out) == 1
+
+    def test_skips_capture_without_dir(self, monkeypatch) -> None:
+        from leak_inspector import session
+        from leak_inspector.wcag import axe_runner, keyboard_nav, screenshot
+
+        monkeypatch.setattr(axe_runner, "audit", lambda d, u: [])
+        monkeypatch.setattr(keyboard_nav, "run_all", lambda d, u: [])
+
+        def fail(*args, **kwargs):  # pragma: no cover - must not be called
+            raise AssertionError("capture_findings called without a screenshot dir")
+
+        monkeypatch.setattr(screenshot, "capture_findings", fail)
+        assert session.audit_page("driver", "https://x/a") == []
+
+
 class TestWriteReports:
     def test_writes_all_five_files(self, tmp_path) -> None:
         findings = [_finding("1.4.3", "error", "https://x/a")]

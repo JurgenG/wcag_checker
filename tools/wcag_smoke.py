@@ -3,12 +3,12 @@
 Launches a real Firefox via the capture driver, navigates to a URL, runs
 the axe-core audit and the keyboard/focus checks against the live page,
 and renders the merged findings grouped by WCAG criterion. Prints the
-text report; with ``--out`` also writes results.json + report.{txt,md,html}.
+text report; with ``--out`` also writes results.json + report.{txt,md,html}
+and a ``screenshots/`` directory with an element-level PNG per finding.
 
-This is a stopgap for the interactive hotkey session runner, which is not
-built yet: it audits a single page's rendered state rather than letting an
-operator browse and trigger audits by hand. It will be removed once the
-session runner + `wcag-checker` CLI land.
+This audits a single page's rendered state in one shot; the interactive
+``wcag-checker`` command is the full hand-driven, multi-page workflow. The
+smoke runner stays as a quick, non-interactive check of one page.
 
     python tools/wcag_smoke.py https://example.com
     python tools/wcag_smoke.py https://example.com --out reports/
@@ -27,7 +27,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from leak_inspector.capture.driver import launch_driver
-from leak_inspector.wcag import axe_runner, keyboard_nav, manual_checklist, reporter
+from leak_inspector.session import SCREENSHOT_DIRNAME
+from leak_inspector.wcag import (
+    axe_runner,
+    keyboard_nav,
+    manual_checklist,
+    reporter,
+    screenshot,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -50,6 +57,10 @@ def main(argv: list[str] | None = None) -> int:
         launched.driver.get(args.url)
         findings = axe_runner.audit(launched.driver)
         findings += keyboard_nav.run_all(launched.driver)
+        if args.out is not None:
+            findings = screenshot.capture_findings(
+                launched.driver, findings, args.out / SCREENSHOT_DIRNAME
+            )
 
     generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     document = reporter.build_report(

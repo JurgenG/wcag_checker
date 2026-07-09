@@ -6,23 +6,28 @@ order; a clean automated run never implies conformance.
 
 ## Session state — resume here (last worked 2026-07-09)
 
-- **Branch:** `feature/session-runner` (branched off `main` after
-  `feature/manual-checklist` was fast-forward merged). Branch-style
+- **Branch:** `feature/screenshots` (branched off `main` after
+  `feature/session-runner` was fast-forward merged). Branch-style
   development — start each new step on its own branch off `main`.
 - **Uncommitted on this branch, ready to commit:**
-  - `leak_inspector/session.py` + `leak_inspector/cli.py` (new)
-  - `tests/test_wcag_session.py` (new)
-  - `leak_inspector/capture/bidi.py` — added the `Ctrl+Alt+A` audit
-    hotkey (parallel to the existing `Ctrl+Alt+S` screenshot signal)
-  - `pyproject.toml` — console entry point renamed to `wcag-checker`
-  - `README.md`, `INSTALL.md`, `TODO.md` (this file)
-- **Tests:** full suite green — **360 passing**. Run with
+  - `leak_inspector/wcag/screenshot.py` (new) — element-evidence gatherer
+  - `leak_inspector/wcag/core.py` — `Finding.screenshot` field added
+  - `leak_inspector/session.py` — `audit_page` captures evidence into
+    `<out>/screenshots/`; `SCREENSHOT_DIRNAME` constant
+  - `leak_inspector/wcag/reporter.py` — evidence in JSON/text/md/HTML
+  - `tools/wcag_smoke.py` — capture wired into `--out`; stale docstring
+    fixed
+  - `tests/test_wcag_screenshot.py` (new) + `tests/test_wcag_session.py`
+    (`audit_page` wiring)
+  - `README.md`, `TODO.md` (this file)
+- **Tests:** full suite green — **369 passing**. Run with
   `. .venv/bin/activate && python -m pytest -q`.
-- **Verified live:** a real `Ctrl+Alt+A` keypress drove the full chain
-  (preload → sentinel → BiDi callback → queue → audit) on publiq.be, and
-  `wcag-checker --help` runs as an installed console command.
-- **Next build step:** per-audit screenshots (the `Ctrl+Alt+S` sentinel
-  hook is still in `capture/bidi.py`), then the packaging pass.
+- **Verified live:** `tools/wcag_smoke.py https://www.publiq.be --out …`
+  produced 86 findings, all with an element PNG (84 distinct after
+  dedup), and every `report.html` thumbnail link resolves.
+- **Next build step:** the packaging pass (see Final cleanup) — declare
+  `axe-selenium-python`, raise `requires-python`, drop stale deps /
+  `report/assets` package-data.
 - **Env note:** venv at `.venv`; the audit engine still needs
   `pip install axe-selenium-python` (not a declared dep yet — see Final
   cleanup).
@@ -99,9 +104,18 @@ order; a clean automated run never implies conformance.
       main thread. Hermetic tests for the audit loop (fake driver) and
       the report-writing seam (tmp_path) + CLI wiring in
       `tests/test_wcag_session.py`; full chain live-smoked.
-  - [ ] Per-audit screenshots — save a PNG of each audited page state as
-        evidence. The `Ctrl+Alt+S` screenshot sentinel is still wired in
-        `capture/bidi.py` and is the natural hook.
+  - [x] Per-finding screenshots — `wcag/screenshot.py` captures an
+        element-level PNG (the snippet with the issue) for each finding
+        that has a selector, into `<out>/screenshots/`, deduping by
+        `(url, selector)` so an element failing several criteria is shot
+        once. `Finding.screenshot` carries the report-relative path; the
+        reporter surfaces it (evidence field in JSON, thumbnail column in
+        HTML, links in text/Markdown). Captured live in `audit_page`
+        right after the audits, before navigation. Hermetic tests
+        (`tests/test_wcag_screenshot.py`) with a fake driver + the
+        `audit_page` wiring in `tests/test_wcag_session.py`; live-smoked
+        on publiq.be (86 findings, 84 PNGs, all HTML links resolve).
+        Wired into `tools/wcag_smoke.py --out` too.
 
 ## Final cleanup
 
