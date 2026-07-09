@@ -18,7 +18,7 @@ it actually stands.
 
 ## Project status
 
-The tool is **mid-build**. Here is what works today and what does not:
+Every part of the intended workflow works today:
 
 | Part | Status |
 | --- | --- |
@@ -33,8 +33,10 @@ The tool is **mid-build**. Here is what works today and what does not:
 
 The hand-driven, multi-page workflow — browse, press `Ctrl+Alt+A` on each
 page, close the window to get a report — works via the `wcag-checker`
-command (below), and every finding is now saved with a screenshot of the
-offending element as evidence. What remains is the packaging pass.
+command (below), as does the one-shot `--once` mode; every finding is
+saved with a screenshot of the offending element as evidence. It is a
+young project, but the audit engines, both run modes, the reports, and
+packaging are all in place.
 
 ## Requirements
 
@@ -144,8 +146,9 @@ grouped by WCAG criterion:
 
 ## What the report contains
 
-With `--out DIR`, four views of the same audit are written, plus a
-`screenshots/` directory of evidence:
+Each run writes four report views of the same audit, plus the
+manual-review checklist and a `screenshots/` directory of evidence, into
+the output directory (`--out`, default `reports/`):
 
 | File | What it holds |
 | --- | --- |
@@ -187,11 +190,13 @@ a criterion with no automated finding is not a pass.
 
 ## Roadmap
 
-The hand-driven, multi-page workflow (`wcag-checker` → browse → press
-`Ctrl+Alt+A` per page → close the window → report), with per-finding
-element screenshots, is in place, and `axe-selenium-python` now installs
-with the package. What remains is internal cleanup of privacy-tool
-leftovers still in the tree (see [TODO.md](TODO.md)).
+The core is complete: both run modes (`wcag-checker` interactive and
+`--once`), the axe-core and keyboard/focus engines, per-finding
+screenshots, the manual-review checklist with step-by-step questions, and
+packaging are all in place, and the privacy-tool code the fork started
+from has been removed. Possible future work (tracked in
+[TODO.md](TODO.md)) includes turning the kept domain-list datasets under
+`bulk-tool/` into a batch-audit mode.
 
 ## Scope / non-goals
 

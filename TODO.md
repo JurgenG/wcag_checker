@@ -6,24 +6,18 @@ order; a clean automated run never implies conformance.
 
 ## Session state — resume here (last worked 2026-07-09)
 
-- **Branch:** `feature/cli-once` (branched off `main` after
-  `feature/rename-audit-page` was fast-forward merged). Branch-style
-  development — start each new step on its own branch off `main`.
+- **Branch:** `feature/docs-skim` (branched off `main` after
+  `feature/cli-once` was fast-forward merged). Branch-style development —
+  start each new step on its own branch off `main`.
 - **Uncommitted on this branch, ready to commit:**
-  - Folded the single-page runner into the CLI as `wcag-checker --once`.
-    `tools/audit_page.py` is **deleted** (`tools/` is now empty);
-    `session.run_once` + `session.wait_until_settled` are the package
-    entry points, and `cli.main` dispatches interactive vs `--once`.
-  - `tests/test_wcag_session_settle.py` (renamed from the audit_page
-    test; now imports from `session`) + a `--once` CLI test in
-    `tests/test_wcag_session.py`.
-  - `README.md`, `INSTALL.md`, `TODO.md` (this file) updated.
+  - `README.md` — final skim: dropped the stale "mid-build"/packaging
+    framing, fixed the report-contents intro, updated the roadmap.
+  - `TODO.md` (this file). SBOM.md needed no changes (already current).
 - **Tests:** full suite green — **381 passing**. Run with
   `. .venv/bin/activate && python -m pytest -q`.
-- **Verified:** `wcag-checker https://belibre.be --once` handled the
-  redirect and audited `/en/` end to end.
-- **Next build step:** nothing queued. Only an optional final README/SBOM
-  skim remains; otherwise the tree reflects reality.
+- **Next build step:** nothing queued — the TODO is fully checked off.
+  The tree reflects reality. Possible future direction: a `bulk-tool/`
+  batch-audit mode over the kept domain-list datasets.
 - **Env note:** venv at `.venv`; `axe-selenium-python` is now a declared
   dependency, so a plain `pip install -e .` pulls it in.
 
@@ -147,9 +141,11 @@ order; a clean automated run never implies conformance.
       / `dnspython` are **kept** — `capture/recorder.py` (+ `capture/dns.py`)
       still use them and are exercised by `tests/test_capture_*`. README +
       INSTALL install steps and SBOM.md dependency table updated to match.
-- [ ] Final README / SBOM pass once the tree reflects reality — mostly
-      done alongside the packaging pass; revisit after the privacy-removal
-      loose ends above are closed.
+- [x] Final README / SBOM pass — README reframed off "mid-build" (every
+      part now works), report-contents intro corrected, and the roadmap
+      updated (core complete; only a possible `bulk-tool/` batch-audit
+      mode noted). SBOM was already current from the packaging pass
+      (verified: no stale pillow/weasyprint/maxminddb/PDF references).
 
 ## Additional features
 - [x] Step-by-step questions for a human manual check of a page —
