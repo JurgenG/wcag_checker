@@ -19,7 +19,7 @@ self-contained HTML page.
 > **Note — two ways to run it.** The `wcag-checker` command opens Firefox
 > and lets you browse by hand, auditing each page you press **Ctrl+Alt+A**
 > on, then writes a report when you close the window. The
-> `tools/wcag_smoke.py` runner audits a single page non-interactively —
+> `tools/audit_page.py` runner audits a single page non-interactively —
 > handy for the quick install check below. (Saving a screenshot per audit
 > is still on the roadmap.) See the "Project status" section of
 > [README.md](README.md).
@@ -409,10 +409,10 @@ Jump to [Verify the install worked](#verify-the-install-worked).
 Still in the terminal where your prompt shows `(.venv)`, run:
 
 ```bash
-python tools/wcag_smoke.py https://example.com --out reports/
+python tools/audit_page.py https://example.com --out reports/
 ```
 
-(On Windows, use `python tools\wcag_smoke.py https://example.com --out reports/`.)
+(On Windows, use `python tools\audit_page.py https://example.com --out reports/`.)
 
 The first time you run it, Selenium downloads a matching `geckodriver`
 automatically — that's expected and only happens once.
@@ -453,7 +453,7 @@ A Firefox window opens; browse to whatever you want to check, press
 
 ## Common problems
 
-### "python: can't open file '.../tools/wcag_smoke.py'"
+### "python: can't open file '.../tools/audit_page.py'"
 
 You're not inside the project folder. `cd` into the `wcag-checker`
 folder you cloned earlier, then run the command again. (`pwd` on

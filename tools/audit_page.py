@@ -12,9 +12,9 @@ This audits a single page's rendered state in one shot; the interactive
 ``wcag-checker`` command is the full hand-driven, multi-page workflow. The
 smoke runner stays as a quick, non-interactive check of one page.
 
-    python tools/wcag_smoke.py https://example.com
-    python tools/wcag_smoke.py https://example.com --out reports/
-    python tools/wcag_smoke.py https://example.com --headless
+    python tools/audit_page.py https://example.com
+    python tools/audit_page.py https://example.com --out reports/
+    python tools/audit_page.py https://example.com --headless
 
 A clean run does NOT mean the page conforms — the automated checks decide
 only part of a subset of WCAG 2.2, and the manual-review criteria are not

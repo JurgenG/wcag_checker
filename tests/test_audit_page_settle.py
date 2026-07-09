@@ -27,7 +27,7 @@ from __future__ import annotations
 import pytest
 from selenium.common.exceptions import WebDriverException
 
-from tools import wcag_smoke
+from tools import audit_page
 
 
 class _FakeClock:
@@ -69,32 +69,32 @@ class _ScriptedDriver:
 @pytest.fixture(autouse=True)
 def _no_real_time(monkeypatch):
     """Replace sleep with a no-op and monotonic with the fake clock."""
-    monkeypatch.setattr(wcag_smoke.time, "sleep", lambda _s: None)
-    monkeypatch.setattr(wcag_smoke.time, "monotonic", _FakeClock().monotonic)
+    monkeypatch.setattr(audit_page.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(audit_page.time, "monotonic", _FakeClock().monotonic)
 
 
 def test_waits_through_client_side_redirect() -> None:
     # Two polls on the original URL, then a redirect that then holds.
     driver = _ScriptedDriver(["https://x/", "https://x/", "https://x/en/"])
-    settled = wcag_smoke.wait_until_settled(driver, quiet=2.0, timeout=100.0)
+    settled = audit_page.wait_until_settled(driver, quiet=2.0, timeout=100.0)
     assert settled == "https://x/en/"
 
 
 def test_stable_page_returns_that_url() -> None:
     driver = _ScriptedDriver(["https://x/page"])
-    settled = wcag_smoke.wait_until_settled(driver, quiet=2.0, timeout=100.0)
+    settled = audit_page.wait_until_settled(driver, quiet=2.0, timeout=100.0)
     assert settled == "https://x/page"
 
 
 def test_never_settles_returns_last_url_within_timeout() -> None:
     # URL changes every poll → never quiet; must stop at timeout, not hang.
     driver = _ScriptedDriver([f"https://x/{n}" for n in range(50)])
-    settled = wcag_smoke.wait_until_settled(driver, quiet=2.0, timeout=5.0)
+    settled = audit_page.wait_until_settled(driver, quiet=2.0, timeout=5.0)
     assert settled.startswith("https://x/")
 
 
 def test_not_ready_does_not_settle_early() -> None:
     # readyState never complete → falls through to the timeout return.
     driver = _ScriptedDriver(["https://x/"], ready=False)
-    settled = wcag_smoke.wait_until_settled(driver, quiet=1.0, timeout=4.0)
+    settled = audit_page.wait_until_settled(driver, quiet=1.0, timeout=4.0)
     assert settled == "https://x/"

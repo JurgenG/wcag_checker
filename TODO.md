@@ -6,22 +6,20 @@ order; a clean automated run never implies conformance.
 
 ## Session state — resume here (last worked 2026-07-09)
 
-- **Branch:** `feature/smoke-settle` (branched off `main` after
-  `feature/reconcile-258` was fast-forward merged). Branch-style
+- **Branch:** `feature/rename-audit-page` (branched off `main` after
+  `feature/smoke-settle` was fast-forward merged, along with a follow-up
+  commit git-ignoring the generated `reports/` output dir). Branch-style
   development — start each new step on its own branch off `main`.
 - **Uncommitted on this branch, ready to commit:**
-  - `tools/wcag_smoke.py` — `wait_until_settled` waits out client-side
-    redirects before injecting axe (fixes "axe is not defined" on pages
-    that JS-redirect, e.g. belibre.be → /en/); audits/report use the
-    settled URL
-  - `tests/test_wcag_smoke_settle.py` (new) — hermetic settle tests
-  - `TODO.md` (this file)
+  - Renamed the single-page runner `tools/wcag_smoke.py` →
+    `tools/audit_page.py` (it outgrew its throwaway "smoke" origins) and
+    its test to `tests/test_audit_page_settle.py`; updated all references
+    in `README.md`, `INSTALL.md`, `TODO.md` (this file).
 - **Tests:** full suite green — **380 passing**. Run with
   `. .venv/bin/activate && python -m pytest -q`.
-- **Next build step:** nothing queued. Open question raised by the user:
-  the single-page runner is still named `wcag_smoke.py` though it is no
-  longer a throwaway — consider renaming/promoting it. Plus the optional
-  final README/SBOM skim.
+- **Next build step:** nothing queued. Optional: a final README/SBOM
+  skim; and consider whether to fold `audit_page.py` into the CLI as a
+  non-interactive `wcag-checker … --once` mode (deferred).
 - **Env note:** venv at `.venv`; `axe-selenium-python` is now a declared
   dependency, so a plain `pip install -e .` pulls it in.
 
@@ -49,7 +47,7 @@ order; a clean automated run never implies conformance.
       → dotted ids). Takes the driver as-is; never owns the session.
       Non-WCAG (best-practice) results are dropped, not mislabelled.
       Hermetic tests in `tests/test_wcag_axe_runner.py`.
-- [x] `tools/wcag_smoke.py` — throwaway runner (launch Firefox →
+- [x] `tools/audit_page.py` — throwaway runner (launch Firefox →
       navigate → axe audit → print by criterion) to exercise
       `axe_runner` on a live page before the session runner exists.
       Remove once the CLI lands.
@@ -60,7 +58,7 @@ order; a clean automated run never implies conformance.
       (self-contained, escaped) render it. Every format carries the
       coverage summary + the "clean run ≠ conformance" disclaimer; no
       criterion is ever reported as a pass. Hermetic tests in
-      `tests/test_wcag_reporter.py`. Wired into `tools/wcag_smoke.py`
+      `tests/test_wcag_reporter.py`. Wired into `tools/audit_page.py`
       (`--out` writes all four formats).
 - [x] `wcag/keyboard_nav.py` — the focus/keyboard checks axe skips. Each
       splits into an impure gatherer (`check_*`, drives the live driver)
@@ -68,7 +66,7 @@ order; a clean automated run never implies conformance.
       all emit `needs-review` candidates (partial-tier), never a pass.
       Hermetic good/bad fixtures in `tests/test_wcag_keyboard_nav.py`;
       gatherers live-smoked on publiq.be. Wired into `run_all` +
-      `tools/wcag_smoke.py`.
+      `tools/audit_page.py`.
   - [x] `check_focus_visible` — 2.4.7 / 2.4.11 (style diff on focus +
         elementFromPoint obscuring)
   - [x] `check_no_keyboard_trap` — 2.1.2 (Tab-press sequence, stuck-run
@@ -90,7 +88,7 @@ order; a clean automated run never implies conformance.
       page by tier) and `render_json` render it. Not a test runner — emits
       review tasks, never pass/fail. Hermetic tests in
       `tests/test_wcag_manual_checklist.py`; wired into
-      `tools/wcag_smoke.py --out`.
+      `tools/audit_page.py --out`.
 - [x] Session runner + `wcag-checker` CLI — `leak_inspector/session.py`
       reuses the capture driver + the new BiDi `Ctrl+Alt+A` audit hotkey
       (`capture/bidi.py`) to run a live per-page audit on each keypress,
@@ -112,7 +110,7 @@ order; a clean automated run never implies conformance.
         (`tests/test_wcag_screenshot.py`) with a fake driver + the
         `audit_page` wiring in `tests/test_wcag_session.py`; live-smoked
         on publiq.be (86 findings, 84 PNGs, all HTML links resolve).
-        Wired into `tools/wcag_smoke.py --out` too.
+        Wired into `tools/audit_page.py --out` too.
 
 ## Final cleanup
 

@@ -26,7 +26,7 @@ The tool is **mid-build**. Here is what works today and what does not:
 | Keyboard / focus checks axe skips (focus visible, keyboard trap, focus order, target size) | ✅ working |
 | Report renderer — `results.json` + text + Markdown + HTML, with coverage summary | ✅ working |
 | Manual-review checklist for the criteria tooling can't decide, with step-by-step review questions per criterion | ✅ working |
-| Single-page audit runner (`tools/wcag_smoke.py`) | ✅ working |
+| Single-page audit runner (`tools/audit_page.py`) | ✅ working |
 | Interactive **hotkey** session (browse by hand, press `Ctrl+Alt+A` per page) | ✅ working |
 | `wcag-checker` console command | ✅ working |
 | Per-finding screenshots (a PNG of each flagged element as evidence) | ✅ working |
@@ -83,12 +83,12 @@ What happens:
 Options: `--out DIR` (default `reports/`) and `--headless` (a visible
 desktop is preferred for accurate focus behaviour).
 
-### Single-page runner (`tools/wcag_smoke.py`)
+### Single-page runner (`tools/audit_page.py`)
 
 For a quick, non-interactive check of one page's rendered state:
 
 ```bash
-python tools/wcag_smoke.py https://example.com --out reports/
+python tools/audit_page.py https://example.com --out reports/
 ```
 
 It opens Firefox, audits the landing page immediately, prints the
