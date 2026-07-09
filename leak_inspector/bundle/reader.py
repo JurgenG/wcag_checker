@@ -57,9 +57,6 @@ _MAX_MANIFEST_BYTES = 1 * 1024 * 1024  # 1 MB (typical: <1 KB)
 #: Per-entry cap on ``cname_chains.json`` uncompressed size.
 _MAX_CNAME_BYTES = 1 * 1024 * 1024  # 1 MB (typical: <10 KB)
 
-#: Per-entry cap on ``enrichment.json`` uncompressed size.
-_MAX_ENRICHMENT_BYTES = 4 * 1024 * 1024  # 4 MB (typical: <100 KB)
-
 #: Per-entry cap on ``storage/<origin>.json`` uncompressed size.
 _MAX_STORAGE_BYTES = 16 * 1024 * 1024  # 16 MB (typical: <500 KB)
 
@@ -199,38 +196,6 @@ class BundleReader:
                     str(item).lower() for item in chain if isinstance(item, str)
                 ]
         return result
-
-    @property
-    def enrichment(self):
-        """Return the bundle's stored enrichment, or ``None`` when absent.
-
-        The artifact is written by the enrichment phase (at capture
-        close, or retrofitted via ``leak-inspector enrich``) as the
-        ``enrichment.json`` zip entry. Bundles produced before the
-        enrichment phase existed simply return ``None`` —
-        backward-compatible, like :attr:`cname_chains`.
-
-        The import is lazy and acyclic: :mod:`..enrichment.artifact`
-        is pure data (it never imports ``bundle``); only the producer
-        side reads bundles.
-        """
-        from ..enrichment.artifact import (
-            ENRICHMENT_ZIP_ENTRY,
-            enrichment_from_json,
-        )
-
-        zf = self._require_open()
-        try:
-            info = zf.getinfo(ENRICHMENT_ZIP_ENTRY)
-        except KeyError:
-            return None
-        if info.file_size > _MAX_ENRICHMENT_BYTES:
-            raise BundleReadError(
-                f"{ENRICHMENT_ZIP_ENTRY} uncompressed size {info.file_size} "
-                f"exceeds cap of {_MAX_ENRICHMENT_BYTES} bytes"
-            )
-        with zf.open(info, "r") as raw:
-            return enrichment_from_json(raw.read().decode("utf-8"))
 
     @property
     def screenshot_bytes(self) -> bytes | None:

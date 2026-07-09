@@ -6,23 +6,22 @@ order; a clean automated run never implies conformance.
 
 ## Session state — resume here (last worked 2026-07-09)
 
-- **Branch:** `feature/packaging` (branched off `main` after
-  `feature/screenshots` was fast-forward merged). Branch-style
+- **Branch:** `feature/privacy-cleanup` (branched off `main` after
+  `feature/packaging` was fast-forward merged). Branch-style
   development — start each new step on its own branch off `main`.
 - **Uncommitted on this branch, ready to commit:**
-  - `pyproject.toml` — the packaging pass (distribution renamed to
-    `wcag-checker`; deps/requires-python/classifiers/package-data)
-  - `README.md`, `INSTALL.md`, `SBOM.md`, `TODO.md` (this file) — updated
-    to match (single-step `pip install -e .`, dependency table)
+  - `leak_inspector/bundle/reader.py` — removed dead `enrichment()`
+    property + `_MAX_ENRICHMENT_BYTES`
+  - `leak_inspector/bundle/__init__.py`, `leak_inspector/safe_net.py`,
+    `leak_inspector/capture/recorder.py` — stale docstrings repointed
+  - `bulk-tool/{run,overview,make_score_scatter,rerender_overview}.py`
+    deleted; `bulk-tool/datasets/` kept
+  - `TODO.md` (this file)
 - **Tests:** full suite green — **369 passing**. Run with
   `. .venv/bin/activate && python -m pytest -q`.
-- **Verified:** `pip install -e .` reinstalls as distribution
-  `wcag-checker` (Requires: axe-selenium-python, dnspython, selenium,
-  tldextract) and `wcag-checker --help` resolves.
-- **Next build step:** privacy-removal loose ends (see Final cleanup) —
-  `bundle/reader.py` dead `enrichment()` property, stale docstrings, and
-  the broken `bulk-tool/`. Then the "Additional features" manual-check
-  questions.
+- **Next build step:** the "Additional features" item — step-by-step
+  questions for a human manual check of a page. (The privacy-removal
+  loose ends are now closed; a final README/SBOM skim can follow.)
 - **Env note:** venv at `.venv`; `axe-selenium-python` is now a declared
   dependency, so a plain `pip install -e .` pulls it in.
 
@@ -119,14 +118,19 @@ order; a clean automated run never implies conformance.
       `__main__.py`, `signals.py`, `impact.py`, `cname_provider.py`, and
       their ~226 tests (kept `capture/`, `bundle/`, `events.py`,
       `safe_net.py`, `wcag/` and their tests — 305 tests still green).
-- [ ] Privacy-removal loose ends still open:
-  - `bundle/reader.py` — the `enrichment()` property lazily imports the
-    now-deleted `..enrichment.artifact`; dead code, remove the property.
-  - stale docstrings naming deleted modules (`safe_net.py`,
-    `bundle/__init__.py`).
-  - `bulk-tool/` — the privacy bulk scanner (imports `analysis`,
-    `report`, …); now broken. Decide keep-and-port vs delete; its
-    `datasets/` domain lists may be reusable for WCAG bulk auditing.
+- [x] Privacy-removal loose ends:
+  - `bundle/reader.py` — removed the dead `enrichment()` property (it
+    imported the deleted `..enrichment.artifact`) and its now-orphaned
+    `_MAX_ENRICHMENT_BYTES` cap. No callers/tests.
+  - stale docstrings repointed off deleted modules: `bundle/__init__.py`
+    (dropped the `analysis` reference), `safe_net.py` (was documented
+    against the deleted `cms`/`http_posture` probes; now describes its
+    real consumer, `capture/page_source.py`), and one now-false
+    "used by the bulk-tool runner" line in `capture/recorder.py`.
+  - `bulk-tool/` — deleted the broken privacy scanner code
+    (`run.py`, `overview.py`, `make_score_scatter.py`,
+    `rerender_overview.py`); **kept** `bulk-tool/datasets/` (domain-list
+    CSVs) for a possible future WCAG bulk-audit mode.
 - [x] `pyproject.toml` packaging pass: added `axe-selenium-python>=3.0`,
       raised `requires-python` to `>=3.12` (dropped the 3.10/3.11
       classifiers), dropped `maxminddb` and `pillow` (imported nowhere)

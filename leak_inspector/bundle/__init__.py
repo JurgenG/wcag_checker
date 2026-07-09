@@ -22,8 +22,8 @@ snapshots, script artifacts) and the reader/writer types that produce
 and consume it. The normalized event model lives one level up in
 :mod:`leak_inspector.events`.
 
-Shared by ``leak_inspector.capture`` and ``leak_inspector.analysis``;
-depends on neither.
+Written by ``leak_inspector.capture``; depends on no other package
+component.
 """
 
 from .manifest import (

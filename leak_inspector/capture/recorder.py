@@ -97,8 +97,8 @@ class Recorder:
     ``auto_close_after_load`` switches the session from human-driven
     (poll until the window is closed) to unattended: after
     ``driver.get`` returns, wait for the page to settle, then finalize.
-    Used by the bulk-tool runner. Settling waits until the BiDi event
-    stream is quiet for ``settle_idle_window`` seconds (so deferred
+    Intended for unattended / bulk captures. Settling waits until the BiDi
+    event stream is quiet for ``settle_idle_window`` seconds (so deferred
     scripts and consent banners have rendered), capped at
     ``settle_max_wait``. ``auto_close_after_load`` is kept as a minimum
     settle floor (the wait is never shorter than this), preserving the

@@ -1,11 +1,11 @@
 """Defensive HTTP helpers — block SSRF to private / internal infrastructure.
 
-The two analysis-time probes (:mod:`leak_inspector.cms.probe` and
-:mod:`leak_inspector.http_posture.probe`) issue HTTP requests against
-hosts named in a bundle manifest. Bundles are routinely shared between
-teammates, so manifest fields are untrusted input. Without validation,
-a hostile bundle could point those probes at cloud metadata endpoints
-(``169.254.169.254``), loopback debug ports, or RFC1918 LAN services.
+The capture layer's page-source fetcher
+(:mod:`leak_inspector.capture.page_source`) issues HTTP requests to pull
+the ``<script>`` bodies a captured page references. Those URLs come from
+the live page — untrusted content — so without validation a hostile page
+could point the fetch at cloud metadata endpoints (``169.254.169.254``),
+loopback debug ports, or RFC1918 LAN services.
 
 This module supplies:
 
@@ -25,14 +25,14 @@ This module supplies:
   SNI, and certificate verification all see the real name (virtual
   hosting unaffected). A blocked redirect surfaces the 3xx response to
   the caller without issuing the follow-up request, matching the
-  existing fail-silently semantics of the probe modules; a blocked
+  fail-silently semantics of the page-source fetcher; a blocked
   connect raises :class:`NonPublicAddressError` (an ``OSError``, which
-  ``urllib`` wraps in ``URLError`` — also fail-silent for the probes).
+  ``urllib`` wraps in ``URLError`` — also fail-silent for the fetcher).
 
 Known trade-off: pinning applies to whatever host the connection is
 opened to, so requests routed through a proxy (``http_proxy`` env) are
-refused when the *proxy* sits in private address space. The probes'
-threat model is hostile bundle content on an analyst's machine;
+refused when the *proxy* sits in private address space. The fetcher's
+threat model is untrusted script URLs drawn from a captured page;
 refusing to tunnel SSRF-sensitive traffic through an unvalidated
 private hop is the conservative choice.
 """
