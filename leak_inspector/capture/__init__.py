@@ -17,9 +17,10 @@
 
 """Selenium + WebDriver BiDi capture layer.
 
-Launches Firefox with stealth prefs, subscribes to BiDi events, snapshots
-client-side storage, and writes a capture bundle to disk.
-
+Launches Firefox with stealth prefs and subscribes to BiDi events. The
+WCAG session layer uses this to open the browser and receive the audit
+hotkey signal (see :mod:`.bidi`); it no longer records capture bundles —
+that privacy-tool machinery was removed in the WCAG conversion.
 """
 
 from __future__ import annotations
@@ -28,9 +29,8 @@ import threading
 class EventIdCounter:
     """Thread-safe monotonic ``event_id`` allocator.
 
-    The capture layer feeds two producers into one ``events.jsonl`` stream:
-    BiDi events (network, navigation, log) and storage snapshots. Sharing
-    one counter keeps ``event_id`` strictly increasing across both.
+    Shared across the BiDi event producers (network, navigation, log) so
+    ``event_id`` stays strictly increasing when several fire concurrently.
 
     Instances are callable: ``counter()`` returns the next id.
     """

@@ -186,8 +186,8 @@ standing reminder that manual review is still required.
 ## Stack
 
 - Python ≥ 3.12, fully synchronous.
-- Runtime deps: `selenium`, `axe-selenium-python` (bundles axe-core
-  4.10.2), `pillow` (screenshot handling).
+- Runtime deps: `selenium` (drives Firefox and writes the element
+  screenshots) and `axe-selenium-python` (bundles axe-core 4.10.2).
 - System deps: Firefox + geckodriver (auto-provisioned by Selenium
   Manager).
 - Tests: `pytest`, hermetic (no live browser / network) for the pure

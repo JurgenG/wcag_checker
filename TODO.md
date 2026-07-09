@@ -6,20 +6,30 @@ order; a clean automated run never implies conformance.
 
 ## Session state — resume here (last worked 2026-07-09)
 
-- **Branch:** `feature/docs-skim` (branched off `main` after
-  `feature/cli-once` was fast-forward merged). Branch-style development —
+- **Branch:** `feature/prune-recording` (branched off `main` after
+  `feature/docs-skim` was fast-forward merged). Branch-style development —
   start each new step on its own branch off `main`.
-- **Uncommitted on this branch, ready to commit:**
-  - `README.md` — final skim: dropped the stale "mid-build"/packaging
-    framing, fixed the report-contents intro, updated the roadmap.
-  - `TODO.md` (this file). SBOM.md needed no changes (already current).
-- **Tests:** full suite green — **381 passing**. Run with
+- **Uncommitted on this branch, ready to commit:** a stray-leftover audit
+  of the whole tree, then removal of everything unreachable from the
+  product —
+  - `WCAG_CLAUDE.md` (the superseded pre-work brief).
+  - The inherited capture-**recording** stack: `leak_inspector/bundle/`,
+    `capture/{recorder,storage,dns,page_source}.py`, `safe_net.py`, plus
+    their 8 test files, `tests/conftest.py` (its fixtures were unused),
+    `tests/fixtures/` (bundle zips), and the `Recorder` tests trimmed out
+    of `tests/test_capture_driver.py`.
+  - Dropped the now-orphaned `tldextract` + `dnspython` deps
+    (`pyproject.toml`); updated `SBOM.md`, `PROJECT.md`, and the surviving
+    `capture/__init__.py` docstrings to match.
+- **Tests:** full suite green — **209 passing** (was 381; the 172 removed
+  all covered code the product never called). Run with
   `. .venv/bin/activate && python -m pytest -q`.
-- **Next build step:** nothing queued — the TODO is fully checked off.
-  The tree reflects reality. Possible future direction: a `bulk-tool/`
-  batch-audit mode over the kept domain-list datasets.
-- **Env note:** venv at `.venv`; `axe-selenium-python` is now a declared
-  dependency, so a plain `pip install -e .` pulls it in.
+- **Next build step:** nothing queued. One known follow-up: `capture/`
+  (`bidi.py`, `events.py`) is *live* for the hotkey but still carries
+  privacy-era event-recording code paths + docstrings; trimming those is
+  deeper surgery inside live files, deferred until wanted.
+- **Env note:** venv at `.venv`; runtime deps are now just `selenium` +
+  `axe-selenium-python` (`pip install -e .` pulls them in).
 
 ## Done
 

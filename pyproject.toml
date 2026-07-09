@@ -44,8 +44,6 @@ classifiers = [
 dependencies = [
     "selenium>=4.20",
     "axe-selenium-python>=3.0",
-    "tldextract>=5.1",
-    "dnspython>=2.4",
 ]
 
 [project.optional-dependencies]

@@ -10,10 +10,8 @@ Declared in `pyproject.toml`; installed by `pip install -e .`.
 
 | Package              | Version pin | License      | Purpose |
 |---                   |---          |---           |--- |
-| selenium             | >=4.20      | Apache-2.0   | WebDriver-BiDi browser-capture driver; also writes the per-finding element screenshots |
+| selenium             | >=4.20      | Apache-2.0   | WebDriver-BiDi browser driver; runs the audit hotkey and writes the per-finding element screenshots |
 | axe-selenium-python  | >=3.0       | MPL-2.0      | Wraps the axe-core accessibility engine (bundles axe-core 4.10.2, MPL-2.0) and injects it into the page |
-| tldextract           | >=5.1       | BSD-3-Clause | Registered-domain extraction used by the capture recorder |
-| dnspython            | >=2.4       | ISC          | DNS CNAME-chain resolution used by the capture recorder |
 
 Transitive dependencies are not enumerated here; generate a complete
 lock with `pip freeze` for release audits.
@@ -48,9 +46,8 @@ writes alongside itself under `screenshots/`.
 - This project: **GPL-3.0-or-later** (see `LICENSE`).
 - `axe-selenium-python` and the bundled axe-core engine are **MPL-2.0**,
   which is GPL-3.0-or-later-compatible.
-- `selenium` (Apache-2.0), `tldextract` (BSD-3-Clause), and `dnspython`
-  (ISC) are permissively licensed and compatible with GPL-3.0-or-later
-  distribution.
+- `selenium` (Apache-2.0) is permissively licensed and compatible with
+  GPL-3.0-or-later distribution.
 - Reports produced by the tool contain *user-supplied browsing content*
   and are not subject to the codebase's license.
 
