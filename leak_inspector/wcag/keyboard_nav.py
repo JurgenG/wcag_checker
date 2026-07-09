@@ -235,6 +235,10 @@ def check_target_size(driver: Any, url: str | None = None) -> list[Finding]:
     Supports **2.5.8 Target Size (Minimum)**. Measures each visible
     focusable element's rendered box. Inline targets (the criterion's
     in-sentence exception) are not flagged. Read-only: measures only.
+
+    This is the sole owner of 2.5.8: :mod:`.axe_runner` deliberately
+    drops axe's own ``target-size`` rule so the criterion is not reported
+    twice (see ``axe_runner._CRITERIA_OWNED_ELSEWHERE``).
     """
     page_url = url if url is not None else driver.current_url
     records = driver.execute_script(_TARGET_SIZE_JS)

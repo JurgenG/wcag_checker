@@ -184,3 +184,44 @@ class TestNormalizeResults:
 
     def test_empty_results_yield_no_findings(self) -> None:
         assert normalize_results({}, URL) == []
+
+
+class TestCriterionOwnership:
+    """2.5.8 is owned by keyboard_nav; axe results mapping to it are dropped."""
+
+    def test_axe_target_size_result_dropped(self) -> None:
+        # The exact tag set axe-core 4.10.2 ships on its target-size rule.
+        results = {
+            "violations": [
+                {
+                    "id": "target-size",
+                    "impact": "serious",
+                    "tags": ["cat.sensory-and-visual-cues", "wcag22aa", "wcag258"],
+                    "help": "h",
+                    "helpUrl": "u",
+                    "nodes": [{"target": ["a.small"]}],
+                }
+            ]
+        }
+        assert normalize_results(results, URL) == []
+
+    def test_other_criteria_on_same_result_survive(self) -> None:
+        # Only 2.5.8 is dropped; a co-tagged criterion is still reported.
+        results = {
+            "violations": [
+                {
+                    "id": "x",
+                    "impact": "serious",
+                    "tags": ["wcag258", "wcag143"],
+                    "help": "h",
+                    "helpUrl": "u",
+                    "nodes": [{"target": ["a"]}],
+                }
+            ]
+        }
+        criteria = {f.criterion for f in normalize_results(results, URL)}
+        assert criteria == {"1.4.3"}
+
+    def test_tag_mapper_itself_is_unchanged(self) -> None:
+        # The drop lives in normalization, not the mechanical tag mapper.
+        assert criteria_from_tags(["wcag258"]) == ["2.5.8"]

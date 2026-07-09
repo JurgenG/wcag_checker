@@ -29,6 +29,14 @@ non-WCAG heuristics — are dropped rather than mislabelled as a WCAG
 finding. axe ``incomplete`` results (axe could not decide on its own)
 become ``"needs-review"`` findings, never passes.
 
+Single owner per criterion: 2.5.8 Target Size (Minimum) is measured by
+this tool's dedicated :func:`.keyboard_nav.check_target_size`, so any axe
+result mapping to 2.5.8 is dropped here (see
+:data:`_CRITERIA_OWNED_ELSEWHERE`) to avoid reporting the same criterion
+from two engines. axe-core 4.10.2 ships its ``target-size`` rule disabled
+by default, so this is latent today, but the drop keeps it from
+surfacing if a future axe release enables that rule.
+
 Boundary: takes a live driver from the caller and runs against it. It
 never launches, configures, or closes the browser session — that belongs
 to the capture/session layer.
@@ -56,6 +64,14 @@ AA_TAG_SET: tuple[str, ...] = (
 #: lower-impact violations are still definite failures but reported as
 #: ``"warning"`` (see :data:`~.core.Severity`).
 _ERROR_IMPACTS = frozenset({"critical", "serious"})
+
+#: Criteria that a dedicated :mod:`.keyboard_nav` check owns end to end;
+#: axe results mapping to them are dropped so the criterion is reported
+#: by exactly one engine. 2.5.8 Target Size (Minimum) is measured by
+#: :func:`.keyboard_nav.check_target_size` (24×24 CSS-px with the inline
+#: exception); axe's own ``target-size`` rule (tagged ``wcag258``) would
+#: otherwise double-report it if enabled.
+_CRITERIA_OWNED_ELSEWHERE = frozenset({"2.5.8"})
 
 
 def audit(driver: Any, url: str | None = None) -> list[Finding]:
@@ -112,7 +128,11 @@ def _findings_for_result(
     result: dict[str, Any], url: str, *, incomplete: bool
 ) -> list[Finding]:
     """Expand one axe result into findings, one per node per criterion."""
-    criteria = criteria_from_tags(result.get("tags", ()))
+    criteria = [
+        c
+        for c in criteria_from_tags(result.get("tags", ()))
+        if c not in _CRITERIA_OWNED_ELSEWHERE
+    ]
     if not criteria:
         return []
 

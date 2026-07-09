@@ -6,22 +6,19 @@ order; a clean automated run never implies conformance.
 
 ## Session state — resume here (last worked 2026-07-09)
 
-- **Branch:** `feature/manual-check` (branched off `main` after
-  `feature/privacy-cleanup` was fast-forward merged, plus a small
-  standalone commit removing the dead `tools/score_v2_preview.py`).
-  Branch-style development — start each new step on its own branch off
-  `main`.
+- **Branch:** `feature/reconcile-258` (branched off `main` after
+  `feature/manual-check` was fast-forward merged). Branch-style
+  development — start each new step on its own branch off `main`.
 - **Uncommitted on this branch, ready to commit:**
-  - `leak_inspector/wcag/manual_checklist.py` — `QUESTIONS` map +
-    per-criterion question rendering (markdown headings, JSON array)
-  - `tests/test_wcag_manual_checklist.py` — updated format tests + new
-    completeness/no-drift tests
-  - `README.md`, `TODO.md` (this file)
-- **Tests:** full suite green — **373 passing**. Run with
+  - `leak_inspector/wcag/axe_runner.py` — `_CRITERIA_OWNED_ELSEWHERE`
+    drops axe's 2.5.8 so `keyboard_nav` owns it
+  - `leak_inspector/wcag/keyboard_nav.py` — docstring notes the ownership
+  - `tests/test_wcag_axe_runner.py` — ownership tests
+  - `TODO.md` (this file)
+- **Tests:** full suite green — **376 passing**. Run with
   `. .venv/bin/activate && python -m pytest -q`.
-- **Next build step:** nothing queued. Candidate follow-ups: reconcile
-  the 2.5.8 double-report between axe and `keyboard_nav` (Build queue),
-  and a final README/SBOM skim. Otherwise the tree reflects reality.
+- **Next build step:** nothing queued. Only a final README/SBOM skim
+  remains as an optional tidy-up; otherwise the tree reflects reality.
 - **Env note:** venv at `.venv`; `axe-selenium-python` is now a declared
   dependency, so a plain `pip install -e .` pulls it in.
 
@@ -76,9 +73,13 @@ order; a clean automated run never implies conformance.
   - [x] `check_tab_order` — 2.4.3 (positive-tabindex detection)
   - [x] `check_target_size` — 2.5.8 (24×24 CSS-px minimum, inline
         exception)
-  - [ ] Reconcile 2.5.8 with axe: axe-core also tags a `target-size`
-        rule `wcag22aa`, so this check may double-report under 2.5.8.
-        Decide which owns it (or dedupe in the reporter).
+  - [x] Reconcile 2.5.8 with axe — `keyboard_nav` owns 2.5.8; `axe_runner`
+        now drops any axe result mapping to it
+        (`_CRITERIA_OWNED_ELSEWHERE`), so it can be reported by only one
+        engine. Verified axe-core 4.10.2 ships `target-size` disabled by
+        default (tags `wcag22aa`/`wcag258`), so the collision was latent;
+        the drop is engine-agnostic and holds if a future axe enables it.
+        Tests in `tests/test_wcag_axe_runner.py`.
 - [x] `wcag/manual_checklist.py` — pure build-once/render-many:
       `build_checklist` selects the in-scope manual + partial criteria (46
       = 27 manual + 19 partial) and pairs them with the audited routes;
