@@ -31,6 +31,7 @@ from leak_inspector.wcag.reporter import (
     DISCLAIMER,
     build_report,
     render_html,
+    render_jira_tickets,
     render_json,
     render_markdown,
     render_text,
@@ -194,3 +195,89 @@ def _external_asset_refs(html_out: str) -> str:
             refs.append(html_out[idx : idx + 60])
             start = idx + 1
     return " ".join(refs)
+
+
+def _fi(criterion, severity, *, impact=None, selector="a", url=URL):
+    return Finding(
+        criterion=criterion, severity=severity, message="m",  # type: ignore[arg-type]
+        selector=selector, url=url, impact=impact,
+    )
+
+
+class TestPriority:
+    # 4.1.2 = level A, 1.4.3 = AA, 3.3.2 = A, 2.4.7 = AA (per the registry).
+    def test_band_from_severity_and_level(self) -> None:
+        doc = build_report([
+            _fi("1.4.3", "error"),          # AA error  -> P2
+            _fi("4.1.2", "error"),          # A  error  -> P1
+            _fi("2.4.7", "needs-review"),   # AA review -> P4
+            _fi("3.3.2", "warning"),        # A  warning-> P3
+        ])
+        bands = {r.criterion.id: r.priority.key for r in doc.criteria}
+        assert bands == {"4.1.2": "P1", "1.4.3": "P2", "3.3.2": "P3", "2.4.7": "P4"}
+
+    def test_criteria_sorted_worst_first(self) -> None:
+        doc = build_report([
+            _fi("2.4.7", "needs-review"),
+            _fi("3.3.2", "warning"),
+            _fi("4.1.2", "error"),
+            _fi("1.4.3", "error"),
+        ])
+        assert [r.priority.key for r in doc.criteria] == ["P1", "P2", "P3", "P4"]
+
+    def test_within_band_more_occurrences_first(self) -> None:
+        doc = build_report([
+            _fi("1.4.3", "error", selector=".a"),   # AA, 1 occurrence
+            _fi("1.4.11", "error", selector=".b"),   # AA, 2 occurrences
+            _fi("1.4.11", "error", selector=".c"),
+        ])
+        # both P2; the 2-occurrence criterion ranks first
+        assert [r.criterion.id for r in doc.criteria] == ["1.4.11", "1.4.3"]
+
+    def test_summary_by_priority_counts(self) -> None:
+        doc = build_report([_fi("4.1.2", "error"), _fi("1.4.3", "error")])
+        assert doc.summary.by_priority == {"P1": 1, "P2": 1, "P3": 0, "P4": 0}
+
+    def test_json_carries_priority_and_impact(self) -> None:
+        doc = build_report([_fi("1.4.3", "error", impact="serious")])
+        data = json.loads(render_json(doc))
+        crit = data["criteria"][0]
+        assert crit["priority"] == "P2"
+        assert crit["findings"][0]["impact"] == "serious"
+        assert data["summary"]["by_priority"]["P2"] == 1
+
+    def test_markdown_has_priority_overview_and_bands(self) -> None:
+        md = render_markdown(build_report([_fi("4.1.2", "error")]))
+        assert "## Priority overview" in md
+        assert "### P1 · Critical" in md
+
+    def test_html_has_priority_pill_and_triage(self) -> None:
+        out = render_html(build_report([_fi("4.1.2", "error")]))
+        assert "class='pri P1'" in out
+        assert "class='triage'" in out
+
+
+class TestJiraPriority:
+    def test_confirmed_bug_ticket(self) -> None:
+        tickets = render_jira_tickets(build_report([_fi("4.1.2", "error")]))
+        body = next(iter(tickets.values()))
+        assert body.startswith("# [P1] WCAG 4.1.2")
+        assert "Highest (P1 · Critical)" in body
+        assert "Accessibility bug" in body
+        assert "priority-p1" in body
+
+    def test_needs_review_is_a_triage_ticket(self) -> None:
+        tickets = render_jira_tickets(build_report([_fi("2.4.7", "needs-review")]))
+        body = next(iter(tickets.values()))
+        assert body.startswith("# [P4] WCAG 2.4.7")
+        assert "needs-triage" in body
+        assert "Accessibility review (candidate)" in body
+
+    def test_elements_grouped_by_page(self) -> None:
+        tickets = render_jira_tickets(build_report([
+            _fi("1.4.3", "error", selector=".a", url="https://x/one"),
+            _fi("1.4.3", "error", selector=".b", url="https://x/two"),
+        ]))
+        body = next(iter(tickets.values()))
+        assert "### https://x/one" in body
+        assert "### https://x/two" in body

@@ -101,7 +101,11 @@ class Finding:
     finding was observed on. ``screenshot`` is the relative path to a PNG
     of the offending element captured as evidence, or ``None`` when no
     screenshot was taken (the finding has no element, or the element
-    could not be located/rendered at capture time).
+    could not be located/rendered at capture time). ``impact`` is the
+    engine's own severity grade when it provides one — axe-core's
+    ``"critical"`` / ``"serious"`` / ``"moderate"`` / ``"minor"`` — used to
+    refine remediation priority; ``None`` when the check does not grade
+    (the keyboard/focus checks).
 
     Checks return ``list[Finding]`` and never raise merely because they
     found issues — an empty list means "no issue detected", never
@@ -114,6 +118,7 @@ class Finding:
     selector: str | None
     url: str
     screenshot: str | None = None
+    impact: str | None = None
 
 
 # --- WCAG 2.2 success-criteria registry ------------------------------------

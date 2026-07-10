@@ -225,7 +225,7 @@ class TestWriteReports:
         assert len(ticket_keys) == 2
         for key in ticket_keys:
             assert written[key].parent == tmp_path / "jira"
-            assert "# [WCAG " in written[key].read_text(encoding="utf-8")
+            assert written[key].read_text(encoding="utf-8").startswith("# [P")
 
     def test_checklist_lists_the_route(self, tmp_path) -> None:
         written = write_reports(tmp_path, [], ["https://x/a"], generated_at="T")

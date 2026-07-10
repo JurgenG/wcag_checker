@@ -136,8 +136,9 @@ def _findings_for_result(
     if not criteria:
         return []
 
+    impact = result.get("impact")
     severity: Severity = (
-        "needs-review" if incomplete else _impact_to_severity(result.get("impact"))
+        "needs-review" if incomplete else _impact_to_severity(impact)
     )
     nodes = result.get("nodes") or ({},)
     findings: list[Finding] = []
@@ -152,6 +153,7 @@ def _findings_for_result(
                     message=message,
                     selector=selector,
                     url=url,
+                    impact=impact if isinstance(impact, str) else None,
                 )
             )
     return findings

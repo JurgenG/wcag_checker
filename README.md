@@ -125,7 +125,27 @@ Examples: `--format json`, `--format html,jira-tickets`, `--format all`.
 `summary.{json,md,html}` at the top level, one subdirectory per site.
 
 Severities: **error** (definite failure), **warning** (lower-impact
-definite failure), **needs-review** (unconfirmed candidate).
+definite failure), **needs-review** (unconfirmed candidate). axe's own
+grade (`critical`/`serious`/`moderate`/`minor`) is kept as the finding's
+**impact**.
+
+### Priority
+
+Every report leads with a **priority overview** and orders findings
+worst-first. Each criterion gets a remediation band (a fix-order hint, not
+a conformance score):
+
+| Band | Meaning |
+| --- | --- |
+| **P1 · Critical** | a definite failure of a level **A** criterion (the most fundamental barriers; A is a prerequisite for AA) |
+| **P2 · High** | a definite failure at level **AA** |
+| **P3 · Medium** | a lower-impact definite failure (warning) |
+| **P4 · Review** | only unconfirmed candidates — a human must triage before it is a bug |
+
+Within a band, criteria are ordered by axe impact then by number of
+occurrences. JIRA tickets carry the band in their title, `Priority`
+field, and labels (P4 tickets are typed as triage, not confirmed bugs) so
+a backlog auto-orders.
 
 ## Coverage
 

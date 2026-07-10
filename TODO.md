@@ -6,22 +6,25 @@ order; a clean automated run never implies conformance.
 
 ## Session state — resume here (last worked 2026-07-09)
 
-- **Branch:** `feature/report-format` (off `main`). Hotkey is fixed and
-  merged (polled `capture/hotkey.py`, default `f9`, CSP-immune; user
-  confirmed F9 works). This branch adds report-format selection.
-- **`--format` (this branch):** `write_reports(..., formats=...)` writes
-  only the chosen findings report(s) instead of all of them; default
-  `html`. `session.parse_formats` compiles a comma-separated spec into
-  format names; `FORMAT_CHOICES` = `html, md, txt, json, jira-tickets,
-  all`. `--format` added to `wcag-checker` and `wcag-batch` (per site),
-  validated before launch. The manual-review checklist + screenshots are
-  always written (not gated).
-- **`jira-tickets` format:** `reporter.render_jira_tickets(document)`
-  (pure) returns one JIRA-style Markdown ticket per WCAG criterion with
-  findings; `write_reports` writes them into a `jira/` subfolder of the
-  output dir. Verified live on publiq.be (79 findings → 4 tickets).
-- **Tests:** full suite green — **173 passing** (`TestParseFormats`,
-  format/jira cases in `test_wcag_session.py`, batch format pass-through).
+- **Branch:** `feature/report-priority` (off `main`). Report UX overhaul
+  so priority is clear (goal: Belgian gov sites reaching WCAG 2.2 AA;
+  reports must help devs via jira-tickets and PMs via md/html).
+  Preceding merged work on `main`: polled `f9` hotkey (CSP-immune),
+  `--format` selection + `jira-tickets` format.
+- **This branch — priority model:** `Finding.impact` now carries axe's
+  `critical/serious/moderate/minor`. `reporter.Priority` bands (P1
+  Critical = A error, P2 High = AA error, P3 Medium = warning, P4 Review =
+  needs-review only); `build_report` assigns a band per criterion and
+  sorts worst-first (band → impact → occurrences); `CoverageSummary`
+  gained `by_priority`.
+- **Renderers:** HTML/MD lead with a scorecard + **priority overview**
+  table and group findings by band (HTML has colored P-pills + an Impact
+  column); JIRA tickets carry the band in title/`Priority`/labels, type
+  P4 as triage (not a bug), and group elements by page. JSON adds
+  `priority` + per-finding `impact` + `summary.by_priority`.
+- **Tests:** full suite green — **183 passing** (`TestPriority`,
+  `TestJiraPriority` in `test_wcag_reporter.py`; axe impact carried).
+  HTML redesign eyeballed via a rendered screenshot on publiq.be.
 - **Next build step:** nothing queued.
 - **Env note:** venv at `.venv`; runtime deps are `selenium` +
   `axe-selenium-python` (`pip install -e .` pulls them in).
