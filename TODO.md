@@ -19,9 +19,10 @@ order; a clean automated run never implies conformance.
   per document) incrementing a counter on the hotkey, and reads/clears it
   — no network, so CSP is irrelevant. `capture/bidi.py` + its test
   deleted; `session.py` loop now polls `watcher.poll()` (no queue/thread).
-  Hotkey is **configurable** (`--hotkey`, default `ctrl+alt+shift+a`),
-  compiled from a spec via `e.code`. Kept per-audit `on_audit` feedback +
-  "click into the page" hint from the prior step.
+  Hotkey is **configurable** (`--hotkey`, default **`f9`** — a bare
+  function key dodges WM grabs and Firefox chrome shortcuts, so a physical
+  press reaches the page), compiled from a spec via `e.code`. Kept
+  per-audit `on_audit` feedback + "click into the page" hint.
 - **Verified live:** `f9` and `ctrl+alt+shift+a` both register on
   belibre.be (CSP) and example.com.
 - **Tests:** full suite green — **164 passing**

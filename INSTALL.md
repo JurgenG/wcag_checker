@@ -283,15 +283,16 @@ Open the HTML report:
 - macOS: `open reports/report.html`
 - Linux: `xdg-open reports/report.html`
 
-For interactive audits, drop `--once`, click into the page, press
-`Ctrl+Alt+Shift+A` on each page you want checked, then close the window:
+For interactive audits, drop `--once`, click into the page, press `F9` on
+each page you want checked, then close the window:
 
 ```bash
 wcag-checker https://example.com --out reports/
 ```
 
-If your desktop grabs that combo, pick another with `--hotkey` (e.g.
-`--hotkey f9`). See [README.md](README.md) for all three run modes.
+If `F9` clashes with something, pick another with `--hotkey` (e.g.
+`--hotkey ctrl+alt+shift+a`). See [README.md](README.md) for all three
+run modes.
 
 ---
 

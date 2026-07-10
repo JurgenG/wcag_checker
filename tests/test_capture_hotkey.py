@@ -38,8 +38,8 @@ from leak_inspector.capture.hotkey import (
 
 
 class TestHotkeySpec:
-    def test_default_is_three_modifier_combo(self) -> None:
-        assert DEFAULT_HOTKEY == "ctrl+alt+shift+a"
+    def test_default_is_f9(self) -> None:
+        assert DEFAULT_HOTKEY == "f9"
 
     def test_condition_requires_exact_modifiers_and_code(self) -> None:
         cond = hotkey_condition("ctrl+alt+shift+a")

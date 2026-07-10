@@ -220,7 +220,7 @@ class TestCli:
         assert str(args.out) == "reports"
         assert args.headless is False
         assert args.once is False
-        assert args.hotkey == "ctrl+alt+shift+a"
+        assert args.hotkey == "f9"
 
     def test_main_invokes_session(self, monkeypatch, tmp_path) -> None:
         from pathlib import Path
@@ -247,7 +247,7 @@ class TestCli:
         assert calls["url"] == "https://x/a"
         assert calls["headless"] is True
         assert callable(calls["on_audit"])  # CLI wires the per-audit feedback
-        assert calls["hotkey"] == "ctrl+alt+shift+a"  # default passed through
+        assert calls["hotkey"] == "f9"  # default passed through
 
     def test_invalid_hotkey_is_rejected(self, monkeypatch) -> None:
         from leak_inspector import cli, session

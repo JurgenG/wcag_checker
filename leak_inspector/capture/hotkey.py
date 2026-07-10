@@ -45,11 +45,12 @@ from typing import Any
 
 from selenium.common.exceptions import WebDriverException
 
-#: Default audit hotkey. Ctrl+Alt+Shift+A: three modifiers make it far
-#: less likely than a plain Ctrl+Alt combo to be grabbed by the window
-#: manager or by Firefox's own chrome shortcuts, and it won't be pressed
-#: by accident. Override via ``--hotkey`` if a desktop still grabs it.
-DEFAULT_HOTKEY = "ctrl+alt+shift+a"
+#: Default audit hotkey. A bare ``F9``: unlike a Ctrl+Alt(+Shift) combo it
+#: is very unlikely to be grabbed by the window manager, and Firefox binds
+#: no chrome shortcut to it (F5/F6/F7/F11/F12 are taken; F9 is free), so a
+#: physical press reaches the page. Override via ``--hotkey`` (e.g.
+#: ``ctrl+alt+shift+a``) if F9 clashes with something on your setup.
+DEFAULT_HOTKEY = "f9"
 
 #: Modifier tokens accepted in a hotkey spec, mapped to their DOM event
 #: flag. An exact match is required: a modifier absent from the spec must
