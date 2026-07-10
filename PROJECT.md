@@ -55,24 +55,24 @@ real desktop and a window a human is driving.
 
 ## The hotkey mechanism
 
-Reused verbatim from the fork's screenshot signal (see
-`leak_inspector/capture/bidi.py`). At session start, a BiDi **preload
-script** is injected into every browsing context. It binds the hotkey on
-the document capture phase (so it fires before any page handler) and, on
-press, issues a `fetch()` to a reserved `*.invalid` **sentinel host**
-carrying the page host in a `?host=` query.
+Adapted from the fork's screenshot signal (see
+`leak_inspector/capture/bidi.py`), now audit-only. At session start, a
+BiDi **preload script** is injected into every browsing context. It binds
+the hotkey on the document capture phase (so it fires before any page
+handler) and, on press, issues a `fetch()` to a reserved `*.invalid`
+**sentinel host** carrying the page host in a `?host=` query.
 
 `.invalid` is RFC-2606-reserved, so the host never resolves — but BiDi's
 `network.beforeRequestSent` fires *before* the fetch is even attempted.
-The capture layer catches that request, **suppresses it** from the event
-stream at every stage of the request lifecycle, and fires a Python
-callback. That callback is the audit trigger: no OS-level keyboard hooks,
-no extra subscriptions, no traffic leaking into results — a clean in-band
-keypress → Python signal.
+The capture layer catches that request and fires a Python callback; that
+callback is the audit trigger. No OS-level keyboard hooks, no extra
+subscriptions — a clean in-band keypress → Python signal. (The WCAG tool
+keeps no event stream, so nothing is recorded; the sentinel fetch simply
+fails DNS and is ignored.)
 
-The fork bound `Ctrl+Alt+S` to grab a screenshot; `wcag-checker` binds
-`Ctrl+Alt+A` to run an audit (which also captures a screenshot as
-evidence). `Ctrl+Shift+S` is deliberately avoided — it's Firefox's own
+`wcag-checker` binds `Ctrl+Alt+A` to run an audit (which also saves a
+screenshot of each flagged element as evidence). `Ctrl+Shift+*` shortcuts
+are deliberately avoided — e.g. `Ctrl+Shift+S` is Firefox's own
 screenshot shortcut, and `preventDefault` in a page handler does not
 block Firefox chrome shortcuts.
 

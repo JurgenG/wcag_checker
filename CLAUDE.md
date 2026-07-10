@@ -34,9 +34,10 @@ review" is always better than a false pass.
   script injected into every browsing context binds the audit hotkey
   (`Ctrl+Alt+A`). The keypress fires a `fetch()` to a reserved
   `.invalid` sentinel host; BiDi's `network.beforeRequestSent` catches
-  it, suppresses it, and fires a Python callback. This is the same
-  in-band keypress→callback signal the fork used for screenshots — no
-  OS-level hooks needed.
+  it and fires a Python callback. This is the same in-band
+  keypress→callback signal the fork used for screenshots — no OS-level
+  hooks needed. (Only the signal survives the conversion; the fork's
+  network/event recorder was removed.)
 - **WCAG audit** (`leak_inspector/wcag/`) — runs on the live driver when
   the hotkey fires:
   - `core.py` — driver-free dataclasses (`WcagCriterion`, `Finding`) and

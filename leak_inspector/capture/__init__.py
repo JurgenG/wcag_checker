@@ -1,5 +1,5 @@
-# leak_inspector — record what data a website leaks during a real
-# human-driven browsing session.
+# wcag_checker — record a real human-driven browsing session and audit
+# the visited pages for WCAG 2.2 accessibility conformance.
 # Copyright (C) 2026 Jurgen Gaeremyn
 #
 # This program is free software: you can redistribute it and/or modify
@@ -17,33 +17,8 @@
 
 """Selenium + WebDriver BiDi capture layer.
 
-Launches Firefox with stealth prefs and subscribes to BiDi events. The
-WCAG session layer uses this to open the browser and receive the audit
-hotkey signal (see :mod:`.bidi`); it no longer records capture bundles —
-that privacy-tool machinery was removed in the WCAG conversion.
+Opens Firefox (:mod:`.driver`) and installs the audit hotkey via a BiDi
+preload script (:mod:`.bidi`). The session layer uses these to drive a
+live audit; the privacy tool's event/bundle recording was removed in the
+WCAG conversion.
 """
-
-from __future__ import annotations
-import threading
-
-class EventIdCounter:
-    """Thread-safe monotonic ``event_id`` allocator.
-
-    Shared across the BiDi event producers (network, navigation, log) so
-    ``event_id`` stays strictly increasing when several fire concurrently.
-
-    Instances are callable: ``counter()`` returns the next id.
-    """
-
-    def __init__(self, start: int = 1) -> None:
-        self._next = start
-        self._lock = threading.Lock()
-
-    def __call__(self) -> int:
-        with self._lock:
-            eid = self._next
-            self._next += 1
-            return eid
-
-
-__all__ = ["EventIdCounter"]

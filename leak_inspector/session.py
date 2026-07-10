@@ -123,7 +123,7 @@ def run_session(
 
     with launch_driver(headless=headless) as launched:
         driver = launched.driver
-        bidi = BiDiCapture(driver, lambda event: None)
+        bidi = BiDiCapture(driver)
         bidi.audit_requested_callback = audit_queue.put
         bidi.start()
         try:

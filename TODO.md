@@ -6,28 +6,27 @@ order; a clean automated run never implies conformance.
 
 ## Session state — resume here (last worked 2026-07-09)
 
-- **Branch:** `feature/prune-recording` (branched off `main` after
-  `feature/docs-skim` was fast-forward merged). Branch-style development —
-  start each new step on its own branch off `main`.
-- **Uncommitted on this branch, ready to commit:** a stray-leftover audit
-  of the whole tree, then removal of everything unreachable from the
-  product —
-  - `WCAG_CLAUDE.md` (the superseded pre-work brief).
-  - The inherited capture-**recording** stack: `leak_inspector/bundle/`,
-    `capture/{recorder,storage,dns,page_source}.py`, `safe_net.py`, plus
-    their 8 test files, `tests/conftest.py` (its fixtures were unused),
-    `tests/fixtures/` (bundle zips), and the `Recorder` tests trimmed out
-    of `tests/test_capture_driver.py`.
-  - Dropped the now-orphaned `tldextract` + `dnspython` deps
-    (`pyproject.toml`); updated `SBOM.md`, `PROJECT.md`, and the surviving
-    `capture/__init__.py` docstrings to match.
-- **Tests:** full suite green — **209 passing** (was 381; the 172 removed
-  all covered code the product never called). Run with
-  `. .venv/bin/activate && python -m pytest -q`.
-- **Next build step:** nothing queued. One known follow-up: `capture/`
-  (`bidi.py`, `events.py`) is *live* for the hotkey but still carries
-  privacy-era event-recording code paths + docstrings; trimming those is
-  deeper surgery inside live files, deferred until wanted.
+- **Branch:** `feature/trim-bidi-events` (branched off `main` after
+  `feature/prune-recording` was fast-forward merged). Branch-style
+  development — start each new step on its own branch off `main`.
+- **Uncommitted on this branch, ready to commit:** trimmed the last of
+  the privacy heritage out of the *live* capture layer —
+  - `capture/bidi.py` rewritten (782 → ~230 lines) to just the audit
+    hotkey: preload script + `before_request_sent` → sentinel →
+    `audit_requested_callback`. Removed the request/response correlator,
+    body capture, JSON redaction, navigation/log events, the event sink,
+    the data collector, and the dead `Ctrl+Alt+S` screenshot sentinel.
+  - `events.py` deleted (only the recorder used it); `EventIdCounter`
+    dropped from `capture/__init__.py`.
+  - `session.py`: `BiDiCapture(driver)` (no event-sink arg).
+  - Tests: deleted `test_events.py` + `test_capture_response_redaction.py`;
+    rewrote the signal test as `test_capture_audit_signal.py`.
+  - Docs: `CLAUDE.md`, `PROJECT.md` hotkey sections updated.
+- **Tests:** full suite green — **144 passing**. Run with
+  `. .venv/bin/activate && python -m pytest -q`. The `Ctrl+Alt+A` chain
+  was also verified live end-to-end (synthetic keypress → callback).
+- **Next build step:** nothing queued — the tree is now just the WCAG
+  product. Possible future direction: a `bulk-tool/` batch-audit mode.
 - **Env note:** venv at `.venv`; runtime deps are now just `selenium` +
   `axe-selenium-python` (`pip install -e .` pulls them in).
 
