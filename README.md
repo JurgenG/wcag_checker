@@ -40,12 +40,16 @@ wcag-checker https://example.com --out reports/
 ```
 
 1. Firefox opens on the URL. Browse normally.
-2. Press `Ctrl+Alt+A` on any page to audit its current rendered state
-   (axe-core + keyboard/focus checks). Repeat on as many pages as needed.
+2. Click into the page (so it has keyboard focus), then press
+   `Ctrl+Alt+Shift+A` to audit its current rendered state (axe-core +
+   keyboard/focus checks). Each audit is confirmed on the console. Repeat
+   on as many pages as needed.
 3. Close the window. Reports for every audited page are written to
    `reports/`.
 
-Options: `--out DIR` (default `reports/`), `--headless`.
+Options: `--out DIR` (default `reports/`), `--headless`, and `--hotkey
+COMBO` (default `ctrl+alt+shift+a`) — change it if your window manager
+grabs the default, e.g. `--hotkey f9` or `--hotkey ctrl+alt+shift+w`.
 
 ### One-shot (`wcag-checker --once`)
 

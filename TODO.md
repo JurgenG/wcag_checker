@@ -6,31 +6,31 @@ order; a clean automated run never implies conformance.
 
 ## Session state — resume here (last worked 2026-07-09)
 
-- **Branch:** `feature/hotkey-feedback` (off `main`). Investigating a
-  "Ctrl+Alt+A isn't working" report. Diagnosis: a driver-injected
-  Ctrl+Alt+A **does** fire the audit callback, so the code path is sound —
-  the likely causes are (a) no per-press feedback (looks dead even when it
-  works) and (b) the physical combo not reaching the page (WM grab, or the
-  page lacking keyboard focus). Changes made: per-audit console feedback
-  (`on_audit` hook through `run_session` → `_run_audit_loop`, wired by the
-  CLI), a "click into the page first" hint, and key match via `e.code ===
-  'KeyA'` instead of `e.key` (robust to macOS/layout Alt-char remapping).
-  Awaiting user retest to confirm whether presses now register; if not,
-  next step is a different/configurable hotkey.
-- (previous) `feature/full-page-evidence` merged to `main`.
-- **Last change (uncommitted on this branch):** finding screenshots are
-  now **full-page** with the offending element boxed, instead of tight
-  element crops. `wcag/screenshot.py` injects an absolutely-positioned
-  overlay at the element's page coords, takes Firefox's full-page
-  screenshot, then removes the overlay; `reporter.py` thumbnail enlarged.
-  Tests in `tests/test_wcag_screenshot.py` rewritten for the new calls.
-  Verified live on publiq.be (1354×2483 full-page PNG, red box around the
-  `<h1>`, overlay cleaned up). Note: full-page PNGs are much larger than
-  the old crops (~1.8 MB each) — a size trade-off for the added context.
-- **Tests:** full suite green — **156 passing**. Run with
-  `. .venv/bin/activate && python -m pytest -q`.
+- **Branch:** `feature/polled-hotkey` (off `main`). Fixed the real
+  "hotkey isn't working" root cause: the old design had the in-page
+  keypress `fetch()` a sentinel host caught via a BiDi network event, but
+  a page's `Content-Security-Policy: connect-src` blocks that fetch, so it
+  failed on every CSP site (most real sites) regardless of the key.
+  Confirmed with a repro: worked on example.com (no CSP), silent on
+  belibre.be (CSP).
+- **Fix (this branch):** replaced the network-sentinel mechanism with
+  **polling**. New `capture/hotkey.py` (`HotkeyWatcher`) runs one
+  `execute_script` per loop tick that installs a keydown listener (once
+  per document) incrementing a counter on the hotkey, and reads/clears it
+  — no network, so CSP is irrelevant. `capture/bidi.py` + its test
+  deleted; `session.py` loop now polls `watcher.poll()` (no queue/thread).
+  Hotkey is **configurable** (`--hotkey`, default `ctrl+alt+shift+a`),
+  compiled from a spec via `e.code`. Kept per-audit `on_audit` feedback +
+  "click into the page" hint from the prior step.
+- **Verified live:** `f9` and `ctrl+alt+shift+a` both register on
+  belibre.be (CSP) and example.com.
+- **Tests:** full suite green — **164 passing**
+  (`tests/test_capture_hotkey.py` replaces the old signal test).
+- **Caveat:** if the WM still grabs a chosen combo it won't reach the page
+  — use `--hotkey f9` (bare F-keys are rarely grabbed); and the page must
+  have keyboard focus (click into it first).
 - **Next build step:** nothing queued.
-- **Env note:** venv at `.venv`; runtime deps are now just `selenium` +
+- **Env note:** venv at `.venv`; runtime deps are `selenium` +
   `axe-selenium-python` (`pip install -e .` pulls them in).
 
 ## Done

@@ -33,12 +33,13 @@ import argparse
 from pathlib import Path
 
 from . import session
+from .capture.hotkey import DEFAULT_HOTKEY, format_hotkey, hotkey_condition
 
 _DESCRIPTION = (
     "Open Firefox on a URL and audit it for WCAG 2.2 AA issues. By default "
-    "you browse by hand and press Ctrl+Alt+A on each page to audit; with "
-    "--once the given page is audited automatically and the tool exits. A "
-    "clean run is not a conformance claim."
+    "you browse by hand and press the audit hotkey on each page to audit; "
+    "with --once the given page is audited automatically and the tool exits. "
+    "A clean run is not a conformance claim."
 )
 
 
@@ -63,7 +64,17 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "audit the given page once and exit, without the interactive "
             "hotkey (waits for the page to settle first — use this when a "
-            "page redirects or closes too fast to press Ctrl+Alt+A)"
+            "page redirects or closes too fast to press the hotkey)"
+        ),
+    )
+    parser.add_argument(
+        "--hotkey",
+        default=DEFAULT_HOTKEY,
+        metavar="COMBO",
+        help=(
+            "interactive audit hotkey, e.g. ctrl+alt+shift+a or f9 "
+            "(default: %(default)s). Change it if your window manager grabs "
+            "the default combo."
         ),
     )
     return parser
@@ -75,22 +86,29 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.once:
         return _run_once(args)
+
+    try:
+        hotkey_condition(args.hotkey)  # validate before launching Firefox
+    except ValueError as exc:
+        print(f"Invalid --hotkey {args.hotkey!r}: {exc}")
+        return 2
     return _run_interactive(args)
 
 
 def _run_interactive(args: argparse.Namespace) -> int:
     """Run the hand-driven hotkey session and print a short summary."""
+    combo = format_hotkey(args.hotkey)
     print(
-        "Opening Firefox. Browse to a page you want checked, click into the "
-        "page (so it has keyboard focus), then press Ctrl+Alt+A to audit it. "
-        "Each audit is confirmed below. Close the window when you're done."
+        f"Opening Firefox. Browse to a page you want checked, click into the "
+        f"page (so it has keyboard focus), then press {combo} to audit it. "
+        f"Each audit is confirmed below. Close the window when you're done."
     )
 
     def _confirm(url: str, count: int) -> None:
         print(f"  audited {url} — {count} finding(s)")
 
     result = session.run_session(
-        args.url, args.out, headless=args.headless, on_audit=_confirm
+        args.url, args.out, headless=args.headless, on_audit=_confirm, hotkey=args.hotkey
     )
 
     print(

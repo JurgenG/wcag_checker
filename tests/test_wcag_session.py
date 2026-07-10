@@ -25,13 +25,22 @@ canned audit function (all WebDriver access is faked).
 from __future__ import annotations
 
 import json
-import queue
 
 import pytest
 from selenium.common.exceptions import WebDriverException
 
 from leak_inspector.session import _run_audit_loop, write_reports
 from leak_inspector.wcag.core import Finding
+
+
+def _poll_sequence(counts):
+    """Return a poll_fn yielding each count in turn, then 0 forever."""
+    it = iter(counts)
+
+    def poll() -> int:
+        return next(it, 0)
+
+    return poll
 
 
 def _finding(criterion: str, severity: str, url: str) -> Finding:
@@ -68,47 +77,45 @@ class _FakeDriver:
 
 
 class TestRunAuditLoop:
-    def test_audits_on_queued_request_and_records_url(self) -> None:
-        driver = _FakeDriver("https://x/a", open_ticks=3)
-        q: queue.Queue[str] = queue.Queue()
-        q.put("x")  # one hotkey press pending
+    def test_audits_when_poll_reports_a_press_and_records_url(self) -> None:
+        driver = _FakeDriver("https://x/a", open_ticks=2)
 
         def audit_fn(_driver, url):
             return [_finding("1.4.3", "error", url)]
 
-        findings, urls = _run_audit_loop(driver, q, poll_interval=0, audit_fn=audit_fn)
+        findings, urls = _run_audit_loop(
+            driver, poll_interval=0, audit_fn=audit_fn, poll_fn=_poll_sequence([1])
+        )
         assert urls == ["https://x/a"]
         assert [f.criterion for f in findings] == ["1.4.3"]
 
-    def test_no_requests_yields_nothing(self) -> None:
+    def test_no_press_yields_nothing(self) -> None:
         driver = _FakeDriver("https://x/a", open_ticks=2)
-        q: queue.Queue[str] = queue.Queue()
 
         def audit_fn(_driver, url):  # pragma: no cover - must not be called
-            raise AssertionError("audit_fn called with no queued request")
+            raise AssertionError("audit_fn called with no hotkey press")
 
-        findings, urls = _run_audit_loop(driver, q, poll_interval=0, audit_fn=audit_fn)
+        findings, urls = _run_audit_loop(
+            driver, poll_interval=0, audit_fn=audit_fn, poll_fn=_poll_sequence([])
+        )
         assert findings == []
         assert urls == []
 
-    def test_same_url_recorded_once(self) -> None:
-        driver = _FakeDriver("https://x/a", open_ticks=5)
-        q: queue.Queue[str] = queue.Queue()
-        q.put("a")
-        q.put("a")  # two presses on the same page
+    def test_same_url_recorded_once_across_presses(self) -> None:
+        driver = _FakeDriver("https://x/a", open_ticks=3)
 
         def audit_fn(_driver, url):
             return [_finding("2.4.3", "needs-review", url)]
 
-        findings, urls = _run_audit_loop(driver, q, poll_interval=0, audit_fn=audit_fn)
-        # Both presses drain in one tick → one audit, URL recorded once.
+        findings, urls = _run_audit_loop(
+            driver, poll_interval=0, audit_fn=audit_fn, poll_fn=_poll_sequence([1, 1])
+        )
+        # Two presses → two audits, but the URL is recorded only once.
         assert urls == ["https://x/a"]
-        assert len(findings) == 1
+        assert len(findings) == 2
 
     def test_on_audit_called_with_url_and_finding_count(self) -> None:
-        driver = _FakeDriver("https://x/a", open_ticks=3)
-        q: queue.Queue[str] = queue.Queue()
-        q.put("x")
+        driver = _FakeDriver("https://x/a", open_ticks=2)
         calls: list[tuple[str, int]] = []
 
         def audit_fn(_driver, url):
@@ -116,9 +123,9 @@ class TestRunAuditLoop:
 
         _run_audit_loop(
             driver,
-            q,
             poll_interval=0,
             audit_fn=audit_fn,
+            poll_fn=_poll_sequence([1]),
             on_audit=lambda url, n: calls.append((url, n)),
         )
         assert calls == [("https://x/a", 2)]
@@ -213,6 +220,7 @@ class TestCli:
         assert str(args.out) == "reports"
         assert args.headless is False
         assert args.once is False
+        assert args.hotkey == "ctrl+alt+shift+a"
 
     def test_main_invokes_session(self, monkeypatch, tmp_path) -> None:
         from pathlib import Path
@@ -222,8 +230,10 @@ class TestCli:
 
         calls: dict[str, object] = {}
 
-        def fake_run(url, out, *, headless, on_audit=None):
-            calls.update(url=url, out=out, headless=headless, on_audit=on_audit)
+        def fake_run(url, out, *, headless, on_audit=None, hotkey=None):
+            calls.update(
+                url=url, out=out, headless=headless, on_audit=on_audit, hotkey=hotkey
+            )
             return SessionResult(
                 audited_urls=("https://x/a",),
                 findings=[],
@@ -237,6 +247,17 @@ class TestCli:
         assert calls["url"] == "https://x/a"
         assert calls["headless"] is True
         assert callable(calls["on_audit"])  # CLI wires the per-audit feedback
+        assert calls["hotkey"] == "ctrl+alt+shift+a"  # default passed through
+
+    def test_invalid_hotkey_is_rejected(self, monkeypatch) -> None:
+        from leak_inspector import cli, session
+
+        def fail(*a, **k):  # pragma: no cover - must not run
+            raise AssertionError("run_session called with an invalid hotkey")
+
+        monkeypatch.setattr(session, "run_session", fail)
+        rc = cli.main(["https://x/a", "--hotkey", "ctrl+alt"])
+        assert rc == 2  # bad spec rejected before launching Firefox
 
     def test_once_flag_invokes_run_once_not_session(
         self, monkeypatch, tmp_path

@@ -18,28 +18,28 @@
 """Orchestrate a live audit session: capture → per-page audit → report.
 
 Wires the reused capture layer to the WCAG audit engines. It opens a
-visible Firefox, installs the BiDi ``Ctrl+Alt+A`` hotkey (see
-:mod:`.capture.bidi`), and on each keypress audits the page as it is
-rendered at that instant — axe-core plus the keyboard/focus checks —
-accumulating findings across every page the operator marks. When the
-window closes, it writes the report (JSON + text + Markdown + HTML) and
-the manual-review checklist to the output directory.
+visible Firefox, installs the audit hotkey (see :mod:`.capture.hotkey`),
+and on each press audits the page as it is rendered at that instant —
+axe-core plus the keyboard/focus checks — accumulating findings across
+every page the operator marks. When the window closes, it writes the
+report (JSON + text + Markdown + HTML) and the manual-review checklist to
+the output directory.
 
-Thread-safety: the hotkey fires on a BiDi background thread, but Selenium
-WebDriver is not thread-safe, so the callback only *enqueues* a request.
-Every driver command — the audits and the window-close poll — runs on the
-main thread, draining that queue. This serializes all WebDriver access.
+The hotkey is detected by polling: each loop tick runs one
+``execute_script`` (via :class:`~.capture.hotkey.HotkeyWatcher`) that both
+installs the in-page keydown listener and reads how many times it fired.
+Everything — the poll, the audits, the window-close check — runs on the
+main thread, so there is no cross-thread state to guard.
 
 The pure output assembly (:func:`write_reports`) and the audit loop
-(:func:`_run_audit_loop`, driver-agnostic via an injected audit function)
-are unit-tested; the live wiring in :func:`run_session` is smoke-tested.
+(:func:`_run_audit_loop`, driver-agnostic via injected audit/poll
+functions) are unit-tested; the live wiring in :func:`run_session` is
+smoke-tested.
 """
 
 from __future__ import annotations
 
-import queue
 import time
-from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -47,8 +47,8 @@ from typing import Any, Callable
 
 from selenium.common.exceptions import WebDriverException
 
-from .capture.bidi import BiDiCapture
 from .capture.driver import launch_driver
+from .capture.hotkey import DEFAULT_HOTKEY, HotkeyWatcher
 from .wcag import axe_runner, keyboard_nav, manual_checklist, reporter, screenshot
 from .wcag.core import Finding
 
@@ -106,40 +106,35 @@ def run_session(
     headless: bool = False,
     poll_interval: float = DEFAULT_POLL_INTERVAL,
     on_audit: Callable[[str, int], None] | None = None,
+    hotkey: str = DEFAULT_HOTKEY,
 ) -> SessionResult:
     """Drive a full interactive audit session and write the reports.
 
-    Opens Firefox on ``target_url``, installs the audit hotkey, and audits
-    the live page on each ``Ctrl+Alt+A``, saving a PNG of every flagged
-    element to ``<output_dir>/screenshots/`` as evidence. ``on_audit`` is
-    called after each hotkey audit with the URL and finding count (the CLI
-    uses it to confirm each press). Blocks until the operator closes the
-    window, then writes the reports to ``output_dir`` and returns a
-    :class:`SessionResult`. ``headless`` runs without a visible window (a
-    real desktop is still recommended for accurate focus behaviour).
+    Opens Firefox on ``target_url``, installs the audit ``hotkey`` (default
+    :data:`~.capture.hotkey.DEFAULT_HOTKEY`), and audits the live page on
+    each press, saving a PNG of every flagged element to
+    ``<output_dir>/screenshots/`` as evidence. ``on_audit`` is called after
+    each audit with the URL and finding count (the CLI uses it to confirm
+    each press). Blocks until the operator closes the window, then writes
+    the reports to ``output_dir`` and returns a :class:`SessionResult`.
+    ``headless`` runs without a visible window (a real desktop is still
+    recommended for accurate focus behaviour).
     """
-    audit_queue: queue.Queue[str] = queue.Queue()
     findings: list[Finding] = []
     audited_urls: list[str] = []
     screenshot_dir = Path(output_dir) / SCREENSHOT_DIRNAME
 
     with launch_driver(headless=headless) as launched:
         driver = launched.driver
-        bidi = BiDiCapture(driver)
-        bidi.audit_requested_callback = audit_queue.put
-        bidi.start()
-        try:
-            driver.get(target_url)
-            findings, audited_urls = _run_audit_loop(
-                driver,
-                audit_queue,
-                poll_interval=poll_interval,
-                audit_fn=lambda d, u: audit_page(d, u, screenshot_dir),
-                on_audit=on_audit,
-            )
-        finally:
-            with suppress(Exception):
-                bidi.stop()
+        watcher = HotkeyWatcher(driver, hotkey=hotkey)
+        driver.get(target_url)
+        findings, audited_urls = _run_audit_loop(
+            driver,
+            poll_interval=poll_interval,
+            audit_fn=lambda d, u: audit_page(d, u, screenshot_dir),
+            poll_fn=watcher.poll,
+            on_audit=on_audit,
+        )
 
     generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     written = write_reports(output_dir, findings, audited_urls, generated_at=generated_at)
@@ -236,25 +231,26 @@ def wait_until_settled(
 
 def _run_audit_loop(
     driver: Any,
-    audit_queue: "queue.Queue[str]",
     *,
     poll_interval: float,
     audit_fn: AuditFn,
+    poll_fn: Callable[[], int],
     on_audit: Callable[[str, int], None] | None = None,
 ) -> tuple[list[Finding], list[str]]:
-    """Audit on each queued hotkey press until the window closes.
+    """Audit whenever the hotkey poll reports presses, until the window closes.
 
-    Runs entirely on the main thread: drains ``audit_queue`` (populated by
-    the BiDi callback thread), and for each request audits the current
-    page via ``audit_fn`` and records the URL once. ``on_audit`` is called
-    after each audit with the URL and the number of findings it produced,
-    so the caller can give the operator live feedback. Returns the
-    accumulated findings and the first-seen-ordered audited URLs.
+    Runs entirely on the main thread. Each tick calls ``poll_fn`` (which
+    installs the in-page hotkey listener if needed and returns the number
+    of presses since the last poll); a non-zero result triggers one audit
+    of the current page via ``audit_fn``, records the URL once, and calls
+    ``on_audit`` with the URL and finding count so the caller can give the
+    operator live feedback. Returns the accumulated findings and the
+    first-seen-ordered audited URLs.
     """
     findings: list[Finding] = []
     audited_urls: list[str] = []
     while _window_open(driver):
-        if _drain(audit_queue):
+        if poll_fn():
             url = _safe_current_url(driver)
             new_findings = audit_fn(driver, url)
             findings.extend(new_findings)
@@ -317,18 +313,6 @@ def _safe_current_url(driver: Any) -> str:
         return driver.current_url or ""
     except WebDriverException:
         return ""
-
-
-def _drain(audit_queue: "queue.Queue[str]") -> bool:
-    """Empty the queue; return True if at least one request was pending."""
-    pending = False
-    while True:
-        try:
-            audit_queue.get_nowait()
-        except queue.Empty:
-            break
-        pending = True
-    return pending
 
 
 __all__ = [

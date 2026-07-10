@@ -15,10 +15,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Selenium + WebDriver BiDi capture layer.
+"""Selenium capture layer.
 
-Opens Firefox (:mod:`.driver`) and installs the audit hotkey via a BiDi
-preload script (:mod:`.bidi`). The session layer uses these to drive a
-live audit; the privacy tool's event/bundle recording was removed in the
-WCAG conversion.
+Opens Firefox (:mod:`.driver`) and provides the polled audit hotkey
+(:mod:`.hotkey`). The session layer uses these to drive a live audit; the
+privacy tool's BiDi event/bundle recording was removed in the WCAG
+conversion.
 """
