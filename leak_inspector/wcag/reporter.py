@@ -457,7 +457,7 @@ th, td {{ border: 1px solid #ddd; padding: 0.4rem 0.6rem; text-align: left;
   vertical-align: top; font-size: 0.9rem; }}
 th {{ background: #f4f4f4; }}
 code {{ font-size: 0.85em; word-break: break-all; }}
-img.evidence {{ max-width: 200px; max-height: 120px; border: 1px solid #ccc;
+img.evidence {{ max-width: 360px; max-height: 480px; border: 1px solid #ccc;
   display: block; }}
 .summary td, .summary th {{ white-space: nowrap; }}
 .tag {{ font-size: 0.75rem; color: #555; font-weight: normal; }}

@@ -6,19 +6,19 @@ order; a clean automated run never implies conformance.
 
 ## Session state — resume here (last worked 2026-07-09)
 
-- **Branch:** on `main`. The `wcag-batch` batch-audit mode was committed
-  directly to `main` (the per-step feature branch was skipped by mistake
-  — resume the branch-first workflow for the next step).
-- **Last change (committed):** the `wcag-batch` batch-audit mode —
-  - `leak_inspector/batch.py` (`run_batch` + pure `read_urls`/`site_slug`/
-    `render_summary_*`) and `leak_inspector/cli_batch.py` (the
-    `wcag-batch` entry point, added to `pyproject.toml`).
-  - `tests/test_batch.py` (hermetic: fake driver + canned audit).
-  - `README.md`, `TODO.md` updated; `/runs/` git-ignored.
+- **Branch:** `feature/full-page-evidence` (off `main`).
+- **Last change (uncommitted on this branch):** finding screenshots are
+  now **full-page** with the offending element boxed, instead of tight
+  element crops. `wcag/screenshot.py` injects an absolutely-positioned
+  overlay at the element's page coords, takes Firefox's full-page
+  screenshot, then removes the overlay; `reporter.py` thumbnail enlarged.
+  Tests in `tests/test_wcag_screenshot.py` rewritten for the new calls.
+  Verified live on publiq.be (1354×2483 full-page PNG, red box around the
+  `<h1>`, overlay cleaned up). Note: full-page PNGs are much larger than
+  the old crops (~1.8 MB each) — a size trade-off for the added context.
 - **Tests:** full suite green — **156 passing**. Run with
-  `. .venv/bin/activate && python -m pytest -q`. Live-smoked on the
-  `tinyset` dataset (2 audited, 1 DNS-failure recorded, continued).
-- **Next build step:** nothing queued — the TODO is fully checked off.
+  `. .venv/bin/activate && python -m pytest -q`.
+- **Next build step:** nothing queued.
 - **Env note:** venv at `.venv`; runtime deps are now just `selenium` +
   `axe-selenium-python` (`pip install -e .` pulls them in).
 

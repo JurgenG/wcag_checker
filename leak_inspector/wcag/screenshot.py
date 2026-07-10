@@ -15,12 +15,19 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Capture element-level screenshot evidence for findings.
+"""Capture full-page screenshot evidence for findings.
 
-For every finding that points at an element (has a CSS selector), locate
-that element on the live page and save a PNG of *just that element* — the
-snippet with the issue — as evidence beside the report. Findings that
-have no element (page-level findings) keep ``screenshot=None``.
+For every finding that points at an element (has a CSS selector), draw a
+rectangle around that element in the live page and save a **full-page**
+screenshot — the whole rendered page, so the flagged element is shown in
+context rather than cropped to a contextless sliver. Findings with no
+element (page-level findings) keep ``screenshot=None``.
+
+The rectangle is drawn by injecting a temporary absolutely-positioned
+overlay at the element's page coordinates (removed again right after the
+shot), so it lines up exactly with the rendered element and needs no
+image library. The capture uses Firefox's full-page screenshot, which
+spans the entire scrollable document, not just the viewport.
 
 Because the shot is of the page as rendered at audit time, this runs on
 the live driver immediately after a page's findings are gathered, before
@@ -29,39 +36,79 @@ a live driver from the caller and never launches, configures, or closes
 the session.
 
 Robustness: locating and shooting an element touches the live DOM, which
-can fail benignly — the selector may no longer match, or the element may
-be zero-sized or off-screen. Such a finding simply keeps
-``screenshot=None`` rather than aborting the audit; only the caller's own
-driver errors propagate. Distinct ``(url, selector)`` pairs are shot once
-and shared, so an element failing several criteria yields one PNG.
+can fail benignly — the selector may no longer match, or the browser may
+refuse a screenshot. Such a finding simply keeps ``screenshot=None``
+rather than aborting the audit. Distinct ``(url, selector)`` pairs are
+shot once and shared, so an element failing several criteria yields one
+PNG.
 """
 
 from __future__ import annotations
 
 import hashlib
+from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from selenium.common.exceptions import WebDriverException
-from selenium.webdriver.common.by import By
 
 from .core import Finding
+
+#: Injected to draw the highlight box. ``arguments[0]`` is the CSS
+#: selector. Returns ``True`` if the element was found and boxed, else
+#: ``False``. The overlay is absolutely positioned at the element's page
+#: coordinates with a high z-index so it shows over any stacking context,
+#: and tagged so :data:`_UNHIGHLIGHT_JS` can remove it.
+_HIGHLIGHT_JS = r"""
+var selector = arguments[0];
+var el;
+try { el = document.querySelector(selector); } catch (e) { return false; }
+if (!el) return false;
+var r = el.getBoundingClientRect();
+var box = document.createElement('div');
+box.setAttribute('data-wcag-evidence-box', '1');
+var s = box.style;
+s.position = 'absolute';
+s.left = (r.left + window.scrollX) + 'px';
+s.top = (r.top + window.scrollY) + 'px';
+s.width = Math.max(r.width, 3) + 'px';
+s.height = Math.max(r.height, 3) + 'px';
+s.border = '3px solid #ff2d55';
+s.outline = '2px solid rgba(255,255,255,0.95)';
+s.outlineOffset = '0px';
+s.background = 'rgba(255,45,85,0.10)';
+s.boxSizing = 'border-box';
+s.margin = '0';
+s.padding = '0';
+s.borderRadius = '0';
+s.zIndex = '2147483647';
+s.pointerEvents = 'none';
+document.documentElement.appendChild(box);
+return true;
+"""
+
+#: Removes every highlight box the capture added.
+_UNHIGHLIGHT_JS = r"""
+var boxes = document.querySelectorAll('[data-wcag-evidence-box]');
+for (var i = 0; i < boxes.length; i++) boxes[i].remove();
+"""
 
 
 def capture_findings(
     driver: Any, findings: list[Finding], screenshot_dir: Path | str
 ) -> list[Finding]:
-    """Capture element evidence and return findings with ``screenshot`` set.
+    """Capture full-page evidence and return findings with ``screenshot`` set.
 
-    For each finding with a selector, saves a PNG of the matching element
-    into ``screenshot_dir`` and returns a copy of the finding carrying the
-    PNG's path (relative to ``screenshot_dir``'s parent, e.g.
-    ``screenshots/<file>.png``) in ``screenshot``; findings without a
-    selector, or whose element cannot be located/rendered, are returned
-    unchanged. Side
-    effects: reads the live DOM and writes PNG files (creating
-    ``screenshot_dir`` on first capture). Input findings are not mutated.
+    For each finding with a selector, boxes the matching element and saves
+    a full-page PNG into ``screenshot_dir``, returning a copy of the
+    finding carrying the PNG's path (relative to ``screenshot_dir``'s
+    parent, e.g. ``screenshots/<file>.png``) in ``screenshot``; findings
+    without a selector, or whose element cannot be located/shot, are
+    returned unchanged. Side effects: reads and briefly mutates the live
+    DOM (the overlay is removed after each shot) and writes PNG files
+    (creating ``screenshot_dir`` on first capture). Input findings are not
+    mutated.
     """
     out = Path(screenshot_dir)
     shot: dict[tuple[str, str], str | None] = {}
@@ -95,21 +142,28 @@ def _evidence_for(
 
 
 def _capture_element(driver: Any, selector: str, out: Path, name: str) -> bool:
-    """Save a PNG of the element matching ``selector`` into ``out/name``.
+    """Box the element matching ``selector`` and save a full-page PNG.
 
     Returns True when a screenshot was written, False when the element
-    cannot be found or the driver declines to shoot it (e.g. zero-sized or
-    unrendered). Scrolls the element into view as a side effect.
+    cannot be found or the browser declines the screenshot. The highlight
+    overlay is always removed again, even if the screenshot fails.
     """
     try:
-        element = driver.find_element(By.CSS_SELECTOR, selector)
+        highlighted = driver.execute_script(_HIGHLIGHT_JS, selector)
     except WebDriverException:
+        return False
+    if not highlighted:
         return False
     out.mkdir(parents=True, exist_ok=True)
     try:
-        return bool(element.screenshot(str(out / name)))
+        png = driver.get_full_page_screenshot_as_png()
+        (out / name).write_bytes(png)
+        return True
     except WebDriverException:
         return False
+    finally:
+        with suppress(WebDriverException):
+            driver.execute_script(_UNHIGHLIGHT_JS)
 
 
 def _evidence_name(url: str, selector: str) -> str:
