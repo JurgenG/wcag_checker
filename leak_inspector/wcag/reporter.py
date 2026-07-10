@@ -160,14 +160,16 @@ class ReportDocument:
 
     ``criteria`` holds one :class:`CriterionReport` per criterion that had
     findings, sorted worst-first by remediation priority (band, then axe
-    impact, then occurrence count). ``summary`` is the coverage context and
+    impact, then occurrence count). ``summary`` is the coverage context,
     ``generated_at`` an optional caller-supplied timestamp (this module
-    never reads the clock, to stay pure and deterministic).
+    never reads the clock, to stay pure and deterministic), and ``title``
+    an optional site label shown in the heading (e.g. a municipality name).
     """
 
     summary: CoverageSummary
     criteria: tuple[CriterionReport, ...]
     generated_at: str | None
+    title: str | None = None
 
 
 def build_report(
@@ -175,6 +177,7 @@ def build_report(
     *,
     urls: Sequence[str] | None = None,
     generated_at: str | None = None,
+    title: str | None = None,
 ) -> ReportDocument:
     """Fold a flat finding list into a grouped, summarized report.
 
@@ -213,6 +216,7 @@ def build_report(
         summary=summary,
         criteria=tuple(criteria),
         generated_at=generated_at,
+        title=title,
     )
 
 
@@ -297,6 +301,7 @@ def render_json(document: ReportDocument) -> str:
     views for humans.
     """
     payload = {
+        "title": document.title,
         "generated_at": document.generated_at,
         "disclaimer": DISCLAIMER,
         "summary": {
@@ -338,6 +343,8 @@ def render_text(document: ReportDocument) -> str:
     """Render a plain-text report for a terminal or a ``.txt`` sidecar."""
     summary = document.summary
     lines = ["WCAG 2.2 AA audit", "=================", ""]
+    if document.title:
+        lines.append(f"Site: {document.title}")
     if document.generated_at:
         lines.append(f"Generated: {document.generated_at}")
     lines.append(f"Pages audited ({len(summary.urls)}):")
@@ -390,6 +397,9 @@ def render_markdown(document: ReportDocument) -> str:
     pri = summary.by_priority
     tier = summary.by_tier
     lines = ["# WCAG 2.2 AA audit", ""]
+    if document.title:
+        lines.append(f"**{document.title}**")
+        lines.append("")
     if document.generated_at:
         lines.append(f"_Generated: {document.generated_at}_")
         lines.append("")
@@ -499,6 +509,11 @@ def render_html(document: ReportDocument) -> str:
     pri = summary.by_priority
 
     url_items = "".join(f"<li>{html.escape(u)}</li>" for u in summary.urls)
+    subtitle = (
+        f"<p class='subtitle'>{html.escape(document.title)}</p>"
+        if document.title
+        else ""
+    )
     generated = (
         f"<p class='meta'>Generated: {html.escape(document.generated_at)}</p>"
         if document.generated_at
@@ -562,6 +577,7 @@ def render_html(document: ReportDocument) -> str:
             )
 
     return _HTML_TEMPLATE.format(
+        subtitle=subtitle,
         generated=generated,
         url_count=len(summary.urls),
         url_items=url_items,
@@ -595,6 +611,7 @@ _HTML_TEMPLATE = """\
 <style>
 body {{ font-family: system-ui, sans-serif; margin: 2rem; color: #1a1a1a; }}
 h1 {{ margin-bottom: 0.25rem; }}
+.subtitle {{ font-size: 1.15rem; font-weight: 600; margin: 0 0 0.25rem; }}
 .meta {{ color: #555; }}
 .disclaimer {{ background: #fff8e1; border-left: 4px solid #f0ad4e;
   padding: 0.75rem 1rem; margin: 1rem 0; }}
@@ -628,6 +645,7 @@ img.evidence {{ max-width: 360px; max-height: 480px; border: 1px solid #ccc;
 </head>
 <body>
 <h1>WCAG 2.2 AA audit</h1>
+{subtitle}
 {generated}
 <p class="disclaimer">{disclaimer}</p>
 <h2>Summary</h2>

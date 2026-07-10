@@ -31,6 +31,7 @@ from leak_inspector import batch
 from leak_inspector.batch import (
     SiteResult,
     read_urls,
+    render_summary_html,
     render_summary_json,
     render_summary_markdown,
     run_batch,
@@ -40,13 +41,34 @@ from leak_inspector.wcag.core import Finding
 
 
 class TestReadUrls:
-    def test_skips_blanks_and_comments_and_dedupes(self, tmp_path) -> None:
+    def test_one_url_per_line_skips_blanks_comments_dedupes(self, tmp_path) -> None:
         f = tmp_path / "list.csv"
         f.write_text(
             "https://a.be\n\n  # a comment\nhttps://b.be\nhttps://a.be\n  https://c.be  \n",
             encoding="utf-8",
         )
-        assert read_urls(f) == ["https://a.be", "https://b.be", "https://c.be"]
+        assert read_urls(f) == [
+            (None, "https://a.be"),
+            (None, "https://b.be"),
+            (None, "https://c.be"),
+        ]
+
+    def test_two_column_name_and_website(self, tmp_path) -> None:
+        f = tmp_path / "municipalities.csv"
+        f.write_text(
+            "naam,website\nAalst,https://aalst.be\nAalter,https://www.aalter.be\n",
+            encoding="utf-8",
+        )
+        # header row skipped; name paired with the URL field
+        assert read_urls(f) == [
+            ("Aalst", "https://aalst.be"),
+            ("Aalter", "https://www.aalter.be"),
+        ]
+
+    def test_url_field_found_regardless_of_column_order(self, tmp_path) -> None:
+        f = tmp_path / "list.csv"
+        f.write_text("https://x.be,X-town\n", encoding="utf-8")
+        assert read_urls(f) == [("X-town", "https://x.be")]
 
 
 class TestSiteSlug:
@@ -67,6 +89,11 @@ class TestSiteSlug:
 
 def _finding(sev: str) -> Finding:
     return Finding(criterion="1.4.3", severity=sev, message="m", selector="a", url="u")
+
+
+def _urls(*items: str) -> list[tuple[str | None, str]]:
+    """(None, url) entries as read_urls returns for a plain one-per-line list."""
+    return [(None, u) for u in items]
 
 
 class _FakeDriver:
@@ -110,7 +137,7 @@ class TestRunBatch:
     def test_audits_each_site_and_writes_reports(self, monkeypatch, tmp_path) -> None:
         self._patch(monkeypatch)
         result = run_batch(
-            ["https://a.be", "https://b.be"], tmp_path, source="list.csv"
+            _urls("https://a.be", "https://b.be"), tmp_path, source="list.csv"
         )
         assert [s.status for s in result.sites] == ["audited", "audited"]
         # Each site got its own report (default format: html) + checklist.
@@ -122,7 +149,7 @@ class TestRunBatch:
 
     def test_formats_passed_through_per_site(self, monkeypatch, tmp_path) -> None:
         self._patch(monkeypatch)
-        run_batch(["https://a.be"], tmp_path, formats=("json", "jira-tickets"))
+        run_batch(_urls("https://a.be"), tmp_path, formats=("json", "jira-tickets"))
         assert (tmp_path / "a.be" / "results.json").exists()
         assert (tmp_path / "a.be" / "jira").is_dir()
         assert not (tmp_path / "a.be" / "report.html").exists()
@@ -130,7 +157,7 @@ class TestRunBatch:
     def test_failure_is_recorded_and_run_continues(self, monkeypatch, tmp_path) -> None:
         self._patch(monkeypatch)
         result = run_batch(
-            ["https://boom.be", "https://ok.be"], tmp_path
+            _urls("https://boom.be", "https://ok.be"), tmp_path
         )
         by_slug = {s.slug: s for s in result.sites}
         assert by_slug["boom.be"].status == "failed"
@@ -150,21 +177,34 @@ class TestRunBatch:
             raise RuntimeError("first line\nstack frame 1\nstack frame 2")
 
         monkeypatch.setattr(batch, "audit_page", multiline_audit)
-        result = run_batch(["https://x.be"], tmp_path)
+        result = run_batch(_urls("https://x.be"), tmp_path)
         err = result.sites[0].error
         assert "\n" not in err
         assert err == "RuntimeError: first line"
 
+    def test_name_labels_site_and_titles_report(self, monkeypatch, tmp_path) -> None:
+        self._patch(monkeypatch)
+        result = run_batch([("Aalst", "https://aalst.be")], tmp_path)
+        site = result.sites[0]
+        assert site.name == "Aalst"
+        assert site.slug == "aalst.be"  # folder still from the URL host
+        data = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+        assert data["sites"][0]["name"] == "Aalst"
+        # the name titles the per-site report
+        assert "Aalst" in (tmp_path / "aalst.be" / "report.html").read_text(
+            encoding="utf-8"
+        )
+
     def test_limit_caps_the_number_audited(self, monkeypatch, tmp_path) -> None:
         self._patch(monkeypatch)
         result = run_batch(
-            ["https://a.be", "https://b.be", "https://c.be"], tmp_path, limit=2
+            _urls("https://a.be", "https://b.be", "https://c.be"), tmp_path, limit=2
         )
         assert len(result.sites) == 2
 
     def test_summary_files_written_with_totals(self, monkeypatch, tmp_path) -> None:
         self._patch(monkeypatch)
-        run_batch(["https://a.be", "https://boom.be"], tmp_path, source="list.csv")
+        run_batch(_urls("https://a.be", "https://boom.be"), tmp_path, source="list.csv")
         data = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
         assert data["totals"] == {"sites": 2, "audited": 1, "failed": 1}
         assert data["source"] == "list.csv"
@@ -175,9 +215,19 @@ class TestRunBatch:
 class TestSummaryRendering:
     def _sites(self) -> list[SiteResult]:
         return [
-            SiteResult("https://a.be", "a.be", "audited", None, 2, 1, 5, 3),
-            SiteResult("https://b.be", "b.be", "failed", "Timeout: boom", 0, 0, 0, 0),
+            SiteResult("https://a.be", "a.be", None, "audited", None, 2, 1, 5, 3),
+            SiteResult("https://b.be", "b.be", None, "failed", "Timeout: boom", 0, 0, 0, 0),
         ]
+
+    def test_named_site_uses_name_as_label(self) -> None:
+        sites = [
+            SiteResult("https://aalst.be", "aalst.be", "Aalst", "audited",
+                       None, 1, 0, 2, 1),
+        ]
+        md = render_summary_markdown(sites)
+        assert "[Aalst](aalst.be/report.html)" in md
+        assert "https://aalst.be" in md  # url still shown as a detail
+        assert ">Aalst</a>" in render_summary_html(sites)
 
     def test_markdown_has_row_per_site_and_marks_failure(self) -> None:
         md = render_summary_markdown(self._sites(), generated_at="T", source="s")

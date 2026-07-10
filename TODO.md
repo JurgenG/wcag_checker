@@ -6,7 +6,16 @@ order; a clean automated run never implies conformance.
 
 ## Session state — resume here (last worked 2026-07-09)
 
-- **Branch:** `feature/report-priority` (off `main`). Report UX overhaul
+- **Branch:** `feature/named-csv` (off `main`). `wcag-batch` now accepts a
+  two-column `name,website` CSV (e.g. the municipalities dataset, header
+  skipped) as well as the one-URL-per-line format. `read_urls` returns
+  `(name, url)` pairs (URL field auto-detected, so column order is free);
+  the name labels the site in the summary (`_site_label`) and titles its
+  per-site report via a new `title` threaded through
+  `write_reports` → `build_report` → `ReportDocument` and rendered in all
+  formats. Folder slug stays URL-host-based. Verified live on the real
+  municipalities.csv (496 rows) with a 2-site run. **187 tests pass.**
+- (previous, merged to `main`) Report UX overhaul
   so priority is clear (goal: Belgian gov sites reaching WCAG 2.2 AA;
   reports must help devs via jira-tickets and PMs via md/html).
   Preceding merged work on `main`: polled `f9` hotkey (CSP-immune),

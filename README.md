@@ -71,9 +71,12 @@ wcag-batch urls.txt --out runs/
 wcag-batch bulk-tool/datasets/publiq/domains.csv --out runs/ --limit 20
 ```
 
-Audits every URL in a list (one per line; `#` comments and blank lines
-ignored), reusing one Firefox. Each site is audited into `runs/<site>/`
-(in the chosen `--format`). A site that fails (DNS error, timeout, …) is
+Audits every URL in a list, reusing one Firefox. The list is either **one
+URL per line**, or a **two-column** `name,website` CSV (with a header row,
+like the municipalities dataset) — the name then labels the site in the
+summary and titles its report, and the website is audited. `#` comments
+and blank lines are ignored. Each site is audited into `runs/<site>/` (in
+the chosen `--format`); a site that fails (DNS error, timeout, …) is
 recorded and the run continues. `runs/summary.{json,md,html}` has one row
 per site — findings by severity or the failure — linking to each report.
 

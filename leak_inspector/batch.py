@@ -65,11 +65,13 @@ class SiteResult:
     ``status`` is ``"audited"`` or ``"failed"``. For a failed site
     ``error`` holds the exception text and the counts are zero; for an
     audited site ``error`` is ``None`` and the counts summarize its
-    findings. ``slug`` is the site's output subdirectory name.
+    findings. ``slug`` is the site's output subdirectory name; ``name`` is
+    the optional display label from a 2-column list (else ``None``).
     """
 
     url: str
     slug: str
+    name: str | None
     status: str
     error: str | None
     error_count: int
@@ -89,19 +91,43 @@ class BatchResult:
     written: dict[str, Path]
 
 
-def read_urls(path: Path | str) -> list[str]:
-    """Read a URL list file: one URL per line, order-preserving, deduplicated.
+def read_urls(path: Path | str) -> list[tuple[str | None, str]]:
+    """Read a URL list file, returning ``(name, url)`` pairs.
 
-    Blank lines and ``#`` comments are skipped; surrounding whitespace is
-    stripped. Duplicates are dropped, keeping first-seen order.
+    Two formats are accepted and may be mixed:
+
+    * **One URL per line** → ``(None, url)``.
+    * **Two comma-separated columns** (e.g. the municipalities dataset's
+      ``naam,website``) → the field that looks like an ``http(s)`` URL is
+      the site to audit, the other field its display name → ``(name, url)``.
+
+    Blank lines, ``#`` comments, and any row with no ``http(s)`` field (so
+    a ``naam,website`` header, or stray text) are skipped. Order-preserving;
+    duplicates by URL are dropped, keeping the first-seen name.
     """
-    seen: dict[str, None] = {}
+    seen: dict[str, str | None] = {}
     for raw in Path(path).read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
-        seen.setdefault(line, None)
-    return list(seen)
+        fields = [f.strip() for f in line.split(",")]
+        url_idx = next(
+            (
+                i
+                for i, f in enumerate(fields)
+                if f.lower().startswith(("http://", "https://"))
+            ),
+            None,
+        )
+        if url_idx is None:
+            continue  # header row, or a line carrying no URL
+        url = fields[url_idx]
+        if url in seen:
+            continue
+        seen[url] = next(
+            (f for i, f in enumerate(fields) if i != url_idx and f), None
+        )
+    return [(name, url) for url, name in seen.items()]
 
 
 def site_slug(url: str, taken: set[str]) -> str:
@@ -125,7 +151,7 @@ def site_slug(url: str, taken: set[str]) -> str:
 
 
 def run_batch(
-    urls: list[str],
+    urls: list[tuple[str | None, str]],
     output_dir: Path | str,
     *,
     headless: bool = False,
@@ -133,15 +159,16 @@ def run_batch(
     source: str | None = None,
     formats: tuple[str, ...] = DEFAULT_FORMATS,
 ) -> BatchResult:
-    """Audit each URL into its own subdirectory and write an aggregate summary.
+    """Audit each ``(name, url)`` into its own subdirectory + write a summary.
 
-    Reuses one Firefox for the whole list (sequential). Each URL runs the
-    one-shot audit flow; any site that raises is recorded as ``"failed"``
-    and the run continues. ``limit`` caps how many URLs are audited (the
-    first N); ``source`` labels the summary with where the list came from;
-    ``formats`` selects the per-site report format(s). Returns a
-    :class:`BatchResult`; the per-site reports and the ``summary.*`` files
-    are written under ``output_dir``.
+    ``urls`` is a list of ``(name, url)`` pairs from :func:`read_urls` (the
+    name is ``None`` for a plain URL list, or the label from a 2-column
+    list). Reuses one Firefox for the whole list (sequential); each site
+    runs the one-shot audit flow, and any site that raises is recorded as
+    ``"failed"`` and the run continues. ``limit`` caps how many are audited
+    (the first N); ``source`` labels the summary; ``formats`` selects the
+    per-site report format(s). Returns a :class:`BatchResult`; the per-site
+    reports and the ``summary.*`` files are written under ``output_dir``.
     """
     out = Path(output_dir)
     selected = urls if limit is None else urls[:limit]
@@ -151,10 +178,10 @@ def run_batch(
     sites: list[SiteResult] = []
     with launch_driver(headless=headless) as launched:
         driver = launched.driver
-        for url in selected:
+        for name, url in selected:
             slug = site_slug(url, taken)
             sites.append(
-                _audit_site(driver, url, slug, out / slug, generated_at, formats)
+                _audit_site(driver, name, url, slug, out / slug, generated_at, formats)
             )
 
     written = write_summary(out, sites, generated_at=generated_at, source=source)
@@ -169,24 +196,35 @@ def run_batch(
 
 def _audit_site(
     driver,
+    name: str | None,
     url: str,
     slug: str,
     site_dir: Path,
     generated_at: str,
     formats: tuple[str, ...],
 ) -> SiteResult:
-    """Audit one URL into ``site_dir``; never raises — failures are recorded."""
+    """Audit one site into ``site_dir``; never raises — failures are recorded.
+
+    ``name`` (if given) titles the per-site report and labels the site in
+    the summary; ``url`` is what gets audited.
+    """
     try:
         driver.get(url)
         audited_url = wait_until_settled(driver)
         findings = audit_page(driver, audited_url, site_dir / SCREENSHOT_DIRNAME)
         write_reports(
-            site_dir, findings, [audited_url], generated_at=generated_at, formats=formats
+            site_dir,
+            findings,
+            [audited_url],
+            generated_at=generated_at,
+            formats=formats,
+            title=name,
         )
         sev = reporter.build_report(findings, urls=[audited_url]).summary
         return SiteResult(
             url=url,
             slug=slug,
+            name=name,
             status="audited",
             error=None,
             error_count=sev.findings_by_severity["error"],
@@ -198,6 +236,7 @@ def _audit_site(
         return SiteResult(
             url=url,
             slug=slug,
+            name=name,
             status="failed",
             error=_short_error(exc),
             error_count=0,
@@ -260,6 +299,11 @@ def _counts(sites: list[SiteResult]) -> tuple[int, int]:
     return audited, len(sites) - audited
 
 
+def _site_label(site: SiteResult) -> str:
+    """Display label for a site: its name if it has one, else its URL."""
+    return site.name or site.url
+
+
 def render_summary_json(
     sites: list[SiteResult], *, generated_at: str | None = None, source: str | None = None
 ) -> str:
@@ -272,6 +316,7 @@ def render_summary_json(
         "totals": {"sites": len(sites), "audited": audited, "failed": failed},
         "sites": [
             {
+                "name": s.name,
                 "url": s.url,
                 "slug": s.slug,
                 "status": s.status,
@@ -309,14 +354,17 @@ def render_summary_markdown(
     lines.append("| Site | Status | Criteria | Error | Warning | Needs-review |")
     lines.append("| --- | --- | ---: | ---: | ---: | ---: |")
     for s in sites:
+        detail = f"<br>{s.url}" if s.name else ""
         if s.status == "audited":
             lines.append(
-                f"| [{s.url}]({s.slug}/report.html) | audited "
+                f"| [{_site_label(s)}]({s.slug}/report.html){detail} | audited "
                 f"| {s.criteria_with_findings} | {s.error_count} "
                 f"| {s.warning_count} | {s.needs_review_count} |"
             )
         else:
-            lines.append(f"| {s.url} | **failed**: {s.error} | – | – | – | – |")
+            lines.append(
+                f"| {_site_label(s)}{detail} | **failed**: {s.error} | – | – | – | – |"
+            )
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -327,18 +375,24 @@ def render_summary_html(
     audited, failed = _counts(sites)
     rows: list[str] = []
     for s in sites:
+        detail = (
+            f"<br><span class='url'>{html.escape(s.url)}</span>" if s.name else ""
+        )
         if s.status == "audited":
-            link = f"<a href='{html.escape(s.slug, quote=True)}/report.html'>{html.escape(s.url)}</a>"
+            link = (
+                f"<a href='{html.escape(s.slug, quote=True)}/report.html'>"
+                f"{html.escape(_site_label(s))}</a>"
+            )
             rows.append(
                 "<tr>"
-                f"<td>{link}</td><td class='ok'>audited</td>"
+                f"<td>{link}{detail}</td><td class='ok'>audited</td>"
                 f"<td>{s.criteria_with_findings}</td><td>{s.error_count}</td>"
                 f"<td>{s.warning_count}</td><td>{s.needs_review_count}</td></tr>"
             )
         else:
             rows.append(
                 "<tr>"
-                f"<td>{html.escape(s.url)}</td>"
+                f"<td>{html.escape(_site_label(s))}{detail}</td>"
                 f"<td class='fail'>failed: {html.escape(s.error or '')}</td>"
                 "<td>–</td><td>–</td><td>–</td><td>–</td></tr>"
             )
@@ -377,6 +431,7 @@ th, td {{ border: 1px solid #ddd; padding: 0.4rem 0.6rem; text-align: left;
 th {{ background: #f4f4f4; }}
 td.ok {{ color: #0a5; }}
 td.fail {{ color: #842029; }}
+.url {{ color: #667; font-size: 0.85em; }}
 </style>
 </head>
 <body>

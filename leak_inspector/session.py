@@ -320,21 +320,26 @@ def write_reports(
     *,
     generated_at: str | None = None,
     formats: tuple[str, ...] = DEFAULT_FORMATS,
+    title: str | None = None,
 ) -> dict[str, Path]:
     """Render and write the selected report ``formats`` to ``output_dir``.
 
     ``formats`` selects which findings report to write — any of ``html``,
     ``md``, ``txt``, ``json`` (each one file), and ``jira-tickets`` (one
     JIRA-style Markdown ticket per issue type, written into a ``jira/``
-    subfolder). The manual-review checklist (``manual-checklist.md``) is
-    always written — it is the essential human-review artifact, not an
-    alternate rendering of the findings. Creates ``output_dir`` if needed
-    and returns a name→path map. Pure output seam — no driver, no network.
+    subfolder). ``title`` is an optional site label shown in the report
+    heading (e.g. a municipality name from a 2-column list). The
+    manual-review checklist (``manual-checklist.md``) is always written —
+    it is the essential human-review artifact, not an alternate rendering
+    of the findings. Creates ``output_dir`` if needed and returns a
+    name→path map. Pure output seam — no driver, no network.
     """
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
-    document = reporter.build_report(findings, urls=urls, generated_at=generated_at)
+    document = reporter.build_report(
+        findings, urls=urls, generated_at=generated_at, title=title
+    )
     written: dict[str, Path] = {}
 
     for fmt in formats:
