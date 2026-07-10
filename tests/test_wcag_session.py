@@ -29,8 +29,27 @@ import json
 import pytest
 from selenium.common.exceptions import WebDriverException
 
-from leak_inspector.session import _run_audit_loop, write_reports
+from leak_inspector.session import _run_audit_loop, parse_formats, write_reports
 from leak_inspector.wcag.core import Finding
+
+
+class TestParseFormats:
+    def test_single(self) -> None:
+        assert parse_formats("html") == ("html",)
+
+    def test_comma_separated_order_preserved_and_deduped(self) -> None:
+        assert parse_formats("json,html,json") == ("json", "html")
+
+    def test_all_expands_to_every_format(self) -> None:
+        assert set(parse_formats("all")) == {"html", "md", "txt", "json", "jira-tickets"}
+
+    def test_jira_tickets_accepted(self) -> None:
+        assert parse_formats("jira-tickets") == ("jira-tickets",)
+
+    def test_unknown_and_empty_raise(self) -> None:
+        for bad in ["pdf", "", " , "]:
+            with pytest.raises(ValueError):
+                parse_formats(bad)
 
 
 def _poll_sequence(counts):
@@ -167,27 +186,46 @@ class TestAuditPage:
 
 
 class TestWriteReports:
-    def test_writes_all_five_files(self, tmp_path) -> None:
+    def test_default_writes_html_plus_checklist_only(self, tmp_path) -> None:
         findings = [_finding("1.4.3", "error", "https://x/a")]
         written = write_reports(
             tmp_path / "out", findings, ["https://x/a"], generated_at="T"
         )
-        assert set(written) == {
-            "results.json",
-            "report.txt",
-            "report.md",
-            "report.html",
-            "manual-checklist.md",
-        }
+        assert set(written) == {"report.html", "manual-checklist.md"}
         for path in written.values():
             assert path.exists() and path.read_text(encoding="utf-8")
 
+    def test_selected_formats_are_written(self, tmp_path) -> None:
+        written = write_reports(
+            tmp_path, [], ["https://x/a"], formats=("txt", "md")
+        )
+        assert set(written) == {"report.txt", "report.md", "manual-checklist.md"}
+        assert not (tmp_path / "report.html").exists()
+        assert not (tmp_path / "results.json").exists()
+
     def test_results_json_valid_and_carries_findings(self, tmp_path) -> None:
         findings = [_finding("1.4.3", "error", "https://x/a")]
-        written = write_reports(tmp_path, findings, ["https://x/a"], generated_at="T")
+        written = write_reports(
+            tmp_path, findings, ["https://x/a"], generated_at="T", formats=("json",)
+        )
         data = json.loads(written["results.json"].read_text(encoding="utf-8"))
         assert data["generated_at"] == "T"
         assert [c["id"] for c in data["criteria"]] == ["1.4.3"]
+
+    def test_jira_tickets_written_into_subfolder(self, tmp_path) -> None:
+        findings = [
+            _finding("1.4.3", "error", "https://x/a"),
+            _finding("2.4.3", "needs-review", "https://x/a"),
+        ]
+        written = write_reports(
+            tmp_path, findings, ["https://x/a"], formats=("jira-tickets",)
+        )
+        # one ticket file per criterion, under jira/
+        ticket_keys = [k for k in written if k.startswith("jira/")]
+        assert len(ticket_keys) == 2
+        for key in ticket_keys:
+            assert written[key].parent == tmp_path / "jira"
+            assert "# [WCAG " in written[key].read_text(encoding="utf-8")
 
     def test_checklist_lists_the_route(self, tmp_path) -> None:
         written = write_reports(tmp_path, [], ["https://x/a"], generated_at="T")
@@ -202,10 +240,10 @@ class TestWriteReports:
     def test_creates_missing_output_dir(self, tmp_path) -> None:
         nested = tmp_path / "deep" / "out"
         write_reports(nested, [], ["https://x/a"])
-        assert (nested / "results.json").exists()
+        assert (nested / "report.html").exists()
 
     def test_empty_run_still_writes(self, tmp_path) -> None:
-        written = write_reports(tmp_path, [], [])
+        written = write_reports(tmp_path, [], [], formats=("json",))
         assert written["results.json"].exists()
         data = json.loads(written["results.json"].read_text(encoding="utf-8"))
         assert data["criteria"] == []
@@ -221,6 +259,7 @@ class TestCli:
         assert args.headless is False
         assert args.once is False
         assert args.hotkey == "f9"
+        assert args.format == "html"
 
     def test_main_invokes_session(self, monkeypatch, tmp_path) -> None:
         from pathlib import Path
@@ -230,9 +269,10 @@ class TestCli:
 
         calls: dict[str, object] = {}
 
-        def fake_run(url, out, *, headless, on_audit=None, hotkey=None):
+        def fake_run(url, out, *, headless, on_audit=None, hotkey=None, formats=None):
             calls.update(
-                url=url, out=out, headless=headless, on_audit=on_audit, hotkey=hotkey
+                url=url, out=out, headless=headless, on_audit=on_audit,
+                hotkey=hotkey, formats=formats,
             )
             return SessionResult(
                 audited_urls=("https://x/a",),
@@ -242,12 +282,14 @@ class TestCli:
             )
 
         monkeypatch.setattr(session, "run_session", fake_run)
-        rc = cli.main(["https://x/a", "--out", str(tmp_path), "--headless"])
+        rc = cli.main(["https://x/a", "--out", str(tmp_path), "--headless",
+                       "--format", "md,json"])
         assert rc == 0
         assert calls["url"] == "https://x/a"
         assert calls["headless"] is True
         assert callable(calls["on_audit"])  # CLI wires the per-audit feedback
         assert calls["hotkey"] == "f9"  # default passed through
+        assert calls["formats"] == ("md", "json")  # parsed and passed through
 
     def test_invalid_hotkey_is_rejected(self, monkeypatch) -> None:
         from leak_inspector import cli, session
@@ -259,6 +301,16 @@ class TestCli:
         rc = cli.main(["https://x/a", "--hotkey", "ctrl+alt"])
         assert rc == 2  # bad spec rejected before launching Firefox
 
+    def test_invalid_format_is_rejected(self, monkeypatch) -> None:
+        from leak_inspector import cli, session
+
+        def fail(*a, **k):  # pragma: no cover - must not run
+            raise AssertionError("run_session called with an invalid format")
+
+        monkeypatch.setattr(session, "run_session", fail)
+        rc = cli.main(["https://x/a", "--format", "pdf"])
+        assert rc == 2
+
     def test_once_flag_invokes_run_once_not_session(
         self, monkeypatch, tmp_path
     ) -> None:
@@ -269,8 +321,8 @@ class TestCli:
 
         calls: dict[str, object] = {}
 
-        def fake_once(url, out, *, headless):
-            calls.update(url=url, out=out, headless=headless)
+        def fake_once(url, out, *, headless, formats=None):
+            calls.update(url=url, out=out, headless=headless, formats=formats)
             return SessionResult(
                 audited_urls=("https://x/a",),
                 findings=[],

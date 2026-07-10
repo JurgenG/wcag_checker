@@ -27,7 +27,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from . import batch
+from . import batch, session
 
 _DESCRIPTION = (
     "Audit every URL in a list file for WCAG 2.2 AA issues, one report "
@@ -61,12 +61,29 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="run Firefox hidden (focus/keyboard checks are less reliable)",
     )
+    parser.add_argument(
+        "--format",
+        default="html",
+        metavar="FMT",
+        help=(
+            "per-site report format(s), comma-separated — choose from "
+            + ", ".join(session.FORMAT_CHOICES)
+            + " (default: %(default)s). 'jira-tickets' writes one ticket per "
+            "issue type per site into that site's jira/ subfolder."
+        ),
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     """Parse arguments, run the batch, and print a short summary."""
     args = build_parser().parse_args(argv)
+
+    try:
+        formats = session.parse_formats(args.format)
+    except ValueError as exc:
+        print(f"Invalid --format {args.format!r}: {exc}")
+        return 2
 
     urls = batch.read_urls(args.urls_file)
     planned = len(urls) if args.limit is None else min(len(urls), args.limit)
@@ -78,6 +95,7 @@ def main(argv: list[str] | None = None) -> int:
         headless=args.headless,
         limit=args.limit,
         source=str(args.urls_file),
+        formats=formats,
     )
 
     audited = sum(1 for s in result.sites if s.status == "audited")

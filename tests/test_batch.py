@@ -113,11 +113,19 @@ class TestRunBatch:
             ["https://a.be", "https://b.be"], tmp_path, source="list.csv"
         )
         assert [s.status for s in result.sites] == ["audited", "audited"]
-        # Each site got its own full report set.
-        assert (tmp_path / "a.be" / "results.json").exists()
+        # Each site got its own report (default format: html) + checklist.
+        assert (tmp_path / "a.be" / "report.html").exists()
+        assert (tmp_path / "a.be" / "manual-checklist.md").exists()
         assert (tmp_path / "b.be" / "report.html").exists()
         assert result.sites[0].error_count == 1
         assert result.sites[0].needs_review_count == 1
+
+    def test_formats_passed_through_per_site(self, monkeypatch, tmp_path) -> None:
+        self._patch(monkeypatch)
+        run_batch(["https://a.be"], tmp_path, formats=("json", "jira-tickets"))
+        assert (tmp_path / "a.be" / "results.json").exists()
+        assert (tmp_path / "a.be" / "jira").is_dir()
+        assert not (tmp_path / "a.be" / "report.html").exists()
 
     def test_failure_is_recorded_and_run_continues(self, monkeypatch, tmp_path) -> None:
         self._patch(monkeypatch)
@@ -129,8 +137,8 @@ class TestRunBatch:
         assert "nope" in by_slug["boom.be"].error
         assert by_slug["ok.be"].status == "audited"  # run continued
         # Failed site wrote no report; audited one did.
-        assert not (tmp_path / "boom.be" / "results.json").exists()
-        assert (tmp_path / "ok.be" / "results.json").exists()
+        assert not (tmp_path / "boom.be" / "report.html").exists()
+        assert (tmp_path / "ok.be" / "report.html").exists()
 
     def test_failure_error_is_single_line(self, monkeypatch, tmp_path) -> None:
         monkeypatch.setattr(

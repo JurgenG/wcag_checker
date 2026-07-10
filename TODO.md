@@ -6,30 +6,22 @@ order; a clean automated run never implies conformance.
 
 ## Session state — resume here (last worked 2026-07-09)
 
-- **Branch:** `feature/polled-hotkey` (off `main`). Fixed the real
-  "hotkey isn't working" root cause: the old design had the in-page
-  keypress `fetch()` a sentinel host caught via a BiDi network event, but
-  a page's `Content-Security-Policy: connect-src` blocks that fetch, so it
-  failed on every CSP site (most real sites) regardless of the key.
-  Confirmed with a repro: worked on example.com (no CSP), silent on
-  belibre.be (CSP).
-- **Fix (this branch):** replaced the network-sentinel mechanism with
-  **polling**. New `capture/hotkey.py` (`HotkeyWatcher`) runs one
-  `execute_script` per loop tick that installs a keydown listener (once
-  per document) incrementing a counter on the hotkey, and reads/clears it
-  — no network, so CSP is irrelevant. `capture/bidi.py` + its test
-  deleted; `session.py` loop now polls `watcher.poll()` (no queue/thread).
-  Hotkey is **configurable** (`--hotkey`, default **`f9`** — a bare
-  function key dodges WM grabs and Firefox chrome shortcuts, so a physical
-  press reaches the page), compiled from a spec via `e.code`. Kept
-  per-audit `on_audit` feedback + "click into the page" hint.
-- **Verified live:** `f9` and `ctrl+alt+shift+a` both register on
-  belibre.be (CSP) and example.com.
-- **Tests:** full suite green — **164 passing**
-  (`tests/test_capture_hotkey.py` replaces the old signal test).
-- **Caveat:** if the WM still grabs a chosen combo it won't reach the page
-  — use `--hotkey f9` (bare F-keys are rarely grabbed); and the page must
-  have keyboard focus (click into it first).
+- **Branch:** `feature/report-format` (off `main`). Hotkey is fixed and
+  merged (polled `capture/hotkey.py`, default `f9`, CSP-immune; user
+  confirmed F9 works). This branch adds report-format selection.
+- **`--format` (this branch):** `write_reports(..., formats=...)` writes
+  only the chosen findings report(s) instead of all of them; default
+  `html`. `session.parse_formats` compiles a comma-separated spec into
+  format names; `FORMAT_CHOICES` = `html, md, txt, json, jira-tickets,
+  all`. `--format` added to `wcag-checker` and `wcag-batch` (per site),
+  validated before launch. The manual-review checklist + screenshots are
+  always written (not gated).
+- **`jira-tickets` format:** `reporter.render_jira_tickets(document)`
+  (pure) returns one JIRA-style Markdown ticket per WCAG criterion with
+  findings; `write_reports` writes them into a `jira/` subfolder of the
+  output dir. Verified live on publiq.be (79 findings → 4 tickets).
+- **Tests:** full suite green — **173 passing** (`TestParseFormats`,
+  format/jira cases in `test_wcag_session.py`, batch format pass-through).
 - **Next build step:** nothing queued.
 - **Env note:** venv at `.venv`; runtime deps are `selenium` +
   `axe-selenium-python` (`pip install -e .` pulls them in).

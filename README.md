@@ -47,9 +47,9 @@ wcag-checker https://example.com --out reports/
 3. Close the window. Reports for every audited page are written to
    `reports/`.
 
-Options: `--out DIR` (default `reports/`), `--headless`, and `--hotkey
-COMBO` (default `f9`) — change it if `F9` clashes with something, e.g.
-`--hotkey ctrl+alt+shift+a`.
+Options: `--out DIR` (default `reports/`), `--headless`, `--hotkey COMBO`
+(default `f9`) — change it if `F9` clashes with something, e.g. `--hotkey
+ctrl+alt+shift+a` — and `--format FMT` (default `html`; see [Output](#output)).
 
 ### One-shot (`wcag-checker --once`)
 
@@ -61,7 +61,8 @@ Opens Firefox, waits for the page to settle (so a client-side redirect
 does not race the audit), audits that page, writes the reports, and
 exits. If the page redirects, the settled URL is audited and reported.
 
-Options: `--out DIR` (default `reports/`), `--headless`.
+Options: `--out DIR` (default `reports/`), `--headless`, `--format FMT`
+(default `html`; see [Output](#output)).
 
 ### Batch (`wcag-batch`)
 
@@ -72,12 +73,13 @@ wcag-batch bulk-tool/datasets/publiq/domains.csv --out runs/ --limit 20
 
 Audits every URL in a list (one per line; `#` comments and blank lines
 ignored), reusing one Firefox. Each site is audited into `runs/<site>/`
-with the full report set. A site that fails (DNS error, timeout, …) is
+(in the chosen `--format`). A site that fails (DNS error, timeout, …) is
 recorded and the run continues. `runs/summary.{json,md,html}` has one row
 per site — findings by severity or the failure — linking to each report.
 
-Options: `--out DIR` (default `runs/`), `--limit N`, `--headless`.
-Example URL lists are in `bulk-tool/datasets/`.
+Options: `--out DIR` (default `runs/`), `--limit N`, `--headless`,
+`--format FMT` (default `html`; see [Output](#output)). Example URL lists
+are in `bulk-tool/datasets/`.
 
 ## What gets checked
 
@@ -97,19 +99,30 @@ WCAG criterion:
 
 ## Output
 
-Each run writes to the output directory (`--out`, default `reports/`):
+Written to the output directory (`--out`, default `reports/`). `--format`
+selects which findings report(s) to write (comma-separated; default
+`html`); the manual-review checklist and screenshots are always written.
+
+| `--format` | Output | Contents |
+| --- | --- | --- |
+| `html` *(default)* | `report.html` | HTML report (inline styling); findings grouped by criterion, each with a screenshot thumbnail. |
+| `md` | `report.md` | Markdown report. |
+| `txt` | `report.txt` | Plain-text report. |
+| `json` | `results.json` | Machine-readable result: each finding (criterion id, severity, message, selector, screenshot path) plus the coverage summary. |
+| `jira-tickets` | `jira/*.md` | One JIRA-style Markdown ticket per issue type (WCAG criterion): fields, affected elements, acceptance criteria. |
+| `all` | all of the above | |
+
+Always written, regardless of `--format`:
 
 | File | Contents |
 | --- | --- |
-| `results.json` | Machine-readable result: each finding (criterion id, severity, message, selector, screenshot path) plus the coverage summary. Source of truth for the other formats. |
-| `report.html` | HTML report (inline styling); findings grouped by criterion, each with a screenshot thumbnail. |
-| `report.md` | Markdown report. |
-| `report.txt` | Plain-text report. |
 | `manual-checklist.md` | Review checklist: the 46 A + AA criteria tooling cannot decide, each with step-by-step questions, per audited page. |
 | `screenshots/` | One PNG per flagged element (one shot per element, reused across criteria). Findings reference these by relative path. |
 
-`wcag-batch` additionally writes `summary.{json,md,html}` at the top
-level and one subdirectory per site.
+Examples: `--format json`, `--format html,jira-tickets`, `--format all`.
+
+`wcag-batch` applies `--format` per site and additionally writes
+`summary.{json,md,html}` at the top level, one subdirectory per site.
 
 Severities: **error** (definite failure), **warning** (lower-impact
 definite failure), **needs-review** (unconfirmed candidate).

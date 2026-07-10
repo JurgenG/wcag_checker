@@ -63,6 +63,52 @@ DEFAULT_POLL_INTERVAL = 0.5
 #: Signature of the per-page audit function the loop calls.
 AuditFn = Callable[[Any, str], list[Finding]]
 
+#: Single-file report renderings: format name → (filename, renderer). The
+#: multi-file ``jira-tickets`` format is handled separately (it writes a
+#: folder). See :func:`write_reports`.
+_REPORT_FORMATS: dict[str, tuple[str, Callable[[Any], str]]] = {
+    "html": ("report.html", reporter.render_html),
+    "md": ("report.md", reporter.render_markdown),
+    "txt": ("report.txt", reporter.render_text),
+    "json": ("results.json", reporter.render_json),
+}
+
+#: The ``jira-tickets`` format — one JIRA-style Markdown ticket per issue
+#: type, written into a ``jira/`` subfolder of the output directory.
+JIRA_FORMAT = "jira-tickets"
+
+#: Every format ``all`` expands to.
+_ALL_FORMATS: tuple[str, ...] = (*_REPORT_FORMATS, JIRA_FORMAT)
+
+#: Formats written when ``--format`` is not given.
+DEFAULT_FORMATS: tuple[str, ...] = ("html",)
+
+#: Accepted ``--format`` tokens (for the CLI's help / choices).
+FORMAT_CHOICES: tuple[str, ...] = (*_REPORT_FORMATS, JIRA_FORMAT, "all")
+
+
+def parse_formats(spec: str) -> tuple[str, ...]:
+    """Parse a ``--format`` spec into report-format names.
+
+    ``spec`` is comma-separated (e.g. ``"html"``, ``"html,json"``,
+    ``"all"``); parsing is order-preserving and deduplicated. ``"all"``
+    expands to every format. Raises :class:`ValueError` for an unknown
+    token or an empty spec.
+    """
+    chosen: dict[str, None] = {}
+    for token in (t.strip().lower() for t in spec.split(",") if t.strip()):
+        if token == "all":
+            for name in _ALL_FORMATS:
+                chosen.setdefault(name, None)
+        elif token in _REPORT_FORMATS or token == JIRA_FORMAT:
+            chosen.setdefault(token, None)
+        else:
+            valid = ", ".join((*_REPORT_FORMATS, JIRA_FORMAT, "all"))
+            raise ValueError(f"unknown format {token!r}; choose from {valid}")
+    if not chosen:
+        raise ValueError("no formats given")
+    return tuple(chosen)
+
 
 @dataclass(frozen=True)
 class SessionResult:
@@ -107,6 +153,7 @@ def run_session(
     poll_interval: float = DEFAULT_POLL_INTERVAL,
     on_audit: Callable[[str, int], None] | None = None,
     hotkey: str = DEFAULT_HOTKEY,
+    formats: tuple[str, ...] = DEFAULT_FORMATS,
 ) -> SessionResult:
     """Drive a full interactive audit session and write the reports.
 
@@ -137,7 +184,9 @@ def run_session(
         )
 
     generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    written = write_reports(output_dir, findings, audited_urls, generated_at=generated_at)
+    written = write_reports(
+        output_dir, findings, audited_urls, generated_at=generated_at, formats=formats
+    )
     return SessionResult(
         audited_urls=tuple(audited_urls),
         findings=findings,
@@ -151,17 +200,18 @@ def run_once(
     output_dir: Path | str,
     *,
     headless: bool = False,
+    formats: tuple[str, ...] = DEFAULT_FORMATS,
 ) -> SessionResult:
     """Audit a single page non-interactively and write the reports.
 
     Opens Firefox on ``target_url``, waits for the page to settle (so a
     client-side redirect cannot leave axe-core injected into a discarded
     document — see :func:`wait_until_settled`), audits that one rendered
-    page, writes the reports to ``output_dir``, and returns a
+    page, writes the reports (``formats``) to ``output_dir``, and returns a
     :class:`SessionResult`. Unlike :func:`run_session` there is no audit
     hotkey and no window-close wait — it audits once and exits, which also
-    handles pages that redirect or vanish too fast to press ``Ctrl+Alt+A``
-    by hand. ``headless`` runs without a visible window.
+    handles pages that redirect or vanish too fast to press the hotkey by
+    hand. ``headless`` runs without a visible window.
 
     ``SessionResult.audited_urls`` holds the single URL the page settled
     on; when that differs from ``target_url`` a redirect occurred.
@@ -175,7 +225,7 @@ def run_once(
 
     generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     written = write_reports(
-        output_dir, findings, [audited_url], generated_at=generated_at
+        output_dir, findings, [audited_url], generated_at=generated_at, formats=formats
     )
     return SessionResult(
         audited_urls=(audited_url,),
@@ -269,33 +319,46 @@ def write_reports(
     urls: list[str],
     *,
     generated_at: str | None = None,
+    formats: tuple[str, ...] = DEFAULT_FORMATS,
 ) -> dict[str, Path]:
-    """Render and write every report format to ``output_dir``.
+    """Render and write the selected report ``formats`` to ``output_dir``.
 
-    Builds the report document and the manual-review checklist, then
-    writes ``results.json``, ``report.txt``, ``report.md``,
-    ``report.html``, and ``manual-checklist.md`` (UTF-8). Creates
-    ``output_dir`` if needed. Returns a basename→path map. This is the
-    module's pure output seam — no driver, no network.
+    ``formats`` selects which findings report to write — any of ``html``,
+    ``md``, ``txt``, ``json`` (each one file), and ``jira-tickets`` (one
+    JIRA-style Markdown ticket per issue type, written into a ``jira/``
+    subfolder). The manual-review checklist (``manual-checklist.md``) is
+    always written — it is the essential human-review artifact, not an
+    alternate rendering of the findings. Creates ``output_dir`` if needed
+    and returns a name→path map. Pure output seam — no driver, no network.
     """
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
     document = reporter.build_report(findings, urls=urls, generated_at=generated_at)
-    checklist = manual_checklist.build_checklist(urls, generated_at=generated_at)
-
-    payloads = {
-        "results.json": reporter.render_json(document),
-        "report.txt": reporter.render_text(document),
-        "report.md": reporter.render_markdown(document),
-        "report.html": reporter.render_html(document),
-        "manual-checklist.md": manual_checklist.render_markdown(checklist),
-    }
     written: dict[str, Path] = {}
-    for name, text in payloads.items():
-        path = out / name
-        path.write_text(text, encoding="utf-8")
-        written[name] = path
+
+    for fmt in formats:
+        if fmt == JIRA_FORMAT:
+            tickets = reporter.render_jira_tickets(document)
+            if tickets:
+                jira_dir = out / "jira"
+                jira_dir.mkdir(parents=True, exist_ok=True)
+                for name, text in tickets.items():
+                    path = jira_dir / name
+                    path.write_text(text, encoding="utf-8")
+                    written[f"jira/{name}"] = path
+        else:
+            filename, render = _REPORT_FORMATS[fmt]
+            path = out / filename
+            path.write_text(render(document), encoding="utf-8")
+            written[filename] = path
+
+    checklist = manual_checklist.build_checklist(urls, generated_at=generated_at)
+    checklist_path = out / "manual-checklist.md"
+    checklist_path.write_text(
+        manual_checklist.render_markdown(checklist), encoding="utf-8"
+    )
+    written["manual-checklist.md"] = checklist_path
     return written
 
 
@@ -316,10 +379,13 @@ def _safe_current_url(driver: Any) -> str:
 
 
 __all__ = [
+    "DEFAULT_FORMATS",
     "DEFAULT_POLL_INTERVAL",
+    "FORMAT_CHOICES",
     "SCREENSHOT_DIRNAME",
     "SessionResult",
     "audit_page",
+    "parse_formats",
     "run_once",
     "run_session",
     "wait_until_settled",

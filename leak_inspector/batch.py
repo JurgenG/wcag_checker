@@ -48,7 +48,13 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .capture.driver import launch_driver
-from .session import SCREENSHOT_DIRNAME, audit_page, wait_until_settled, write_reports
+from .session import (
+    DEFAULT_FORMATS,
+    SCREENSHOT_DIRNAME,
+    audit_page,
+    wait_until_settled,
+    write_reports,
+)
 from .wcag import reporter
 
 
@@ -125,15 +131,17 @@ def run_batch(
     headless: bool = False,
     limit: int | None = None,
     source: str | None = None,
+    formats: tuple[str, ...] = DEFAULT_FORMATS,
 ) -> BatchResult:
     """Audit each URL into its own subdirectory and write an aggregate summary.
 
     Reuses one Firefox for the whole list (sequential). Each URL runs the
     one-shot audit flow; any site that raises is recorded as ``"failed"``
     and the run continues. ``limit`` caps how many URLs are audited (the
-    first N); ``source`` labels the summary with where the list came from.
-    Returns a :class:`BatchResult`; the per-site reports and the
-    ``summary.*`` files are written under ``output_dir``.
+    first N); ``source`` labels the summary with where the list came from;
+    ``formats`` selects the per-site report format(s). Returns a
+    :class:`BatchResult`; the per-site reports and the ``summary.*`` files
+    are written under ``output_dir``.
     """
     out = Path(output_dir)
     selected = urls if limit is None else urls[:limit]
@@ -145,7 +153,9 @@ def run_batch(
         driver = launched.driver
         for url in selected:
             slug = site_slug(url, taken)
-            sites.append(_audit_site(driver, url, slug, out / slug, generated_at))
+            sites.append(
+                _audit_site(driver, url, slug, out / slug, generated_at, formats)
+            )
 
     written = write_summary(out, sites, generated_at=generated_at, source=source)
     return BatchResult(
@@ -158,14 +168,21 @@ def run_batch(
 
 
 def _audit_site(
-    driver, url: str, slug: str, site_dir: Path, generated_at: str
+    driver,
+    url: str,
+    slug: str,
+    site_dir: Path,
+    generated_at: str,
+    formats: tuple[str, ...],
 ) -> SiteResult:
     """Audit one URL into ``site_dir``; never raises — failures are recorded."""
     try:
         driver.get(url)
         audited_url = wait_until_settled(driver)
         findings = audit_page(driver, audited_url, site_dir / SCREENSHOT_DIRNAME)
-        write_reports(site_dir, findings, [audited_url], generated_at=generated_at)
+        write_reports(
+            site_dir, findings, [audited_url], generated_at=generated_at, formats=formats
+        )
         sev = reporter.build_report(findings, urls=[audited_url]).summary
         return SiteResult(
             url=url,

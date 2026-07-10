@@ -77,6 +77,18 @@ def build_parser() -> argparse.ArgumentParser:
             "the default combo."
         ),
     )
+    parser.add_argument(
+        "--format",
+        default="html",
+        metavar="FMT",
+        help=(
+            "report format(s), comma-separated — choose from "
+            + ", ".join(session.FORMAT_CHOICES)
+            + " (default: %(default)s). 'jira-tickets' writes one JIRA-style "
+            "ticket per issue type into a jira/ subfolder; 'all' writes every "
+            "format. The manual-review checklist is always written."
+        ),
+    )
     return parser
 
 
@@ -84,18 +96,24 @@ def main(argv: list[str] | None = None) -> int:
     """Parse arguments, run the chosen session mode, and print a summary."""
     args = build_parser().parse_args(argv)
 
+    try:
+        formats = session.parse_formats(args.format)
+    except ValueError as exc:
+        print(f"Invalid --format {args.format!r}: {exc}")
+        return 2
+
     if args.once:
-        return _run_once(args)
+        return _run_once(args, formats)
 
     try:
         hotkey_condition(args.hotkey)  # validate before launching Firefox
     except ValueError as exc:
         print(f"Invalid --hotkey {args.hotkey!r}: {exc}")
         return 2
-    return _run_interactive(args)
+    return _run_interactive(args, formats)
 
 
-def _run_interactive(args: argparse.Namespace) -> int:
+def _run_interactive(args: argparse.Namespace, formats: tuple[str, ...]) -> int:
     """Run the hand-driven hotkey session and print a short summary."""
     combo = format_hotkey(args.hotkey)
     print(
@@ -108,7 +126,12 @@ def _run_interactive(args: argparse.Namespace) -> int:
         print(f"  audited {url} — {count} finding(s)")
 
     result = session.run_session(
-        args.url, args.out, headless=args.headless, on_audit=_confirm, hotkey=args.hotkey
+        args.url,
+        args.out,
+        headless=args.headless,
+        on_audit=_confirm,
+        hotkey=args.hotkey,
+        formats=formats,
     )
 
     print(
@@ -120,10 +143,12 @@ def _run_interactive(args: argparse.Namespace) -> int:
     return 0
 
 
-def _run_once(args: argparse.Namespace) -> int:
+def _run_once(args: argparse.Namespace, formats: tuple[str, ...]) -> int:
     """Run a one-shot single-page audit and print a short summary."""
     print(f"Opening Firefox and auditing {args.url} once...")
-    result = session.run_once(args.url, args.out, headless=args.headless)
+    result = session.run_once(
+        args.url, args.out, headless=args.headless, formats=formats
+    )
 
     audited = result.audited_urls[0] if result.audited_urls else args.url
     if audited != args.url:
