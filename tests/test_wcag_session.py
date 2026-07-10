@@ -105,6 +105,24 @@ class TestRunAuditLoop:
         assert urls == ["https://x/a"]
         assert len(findings) == 1
 
+    def test_on_audit_called_with_url_and_finding_count(self) -> None:
+        driver = _FakeDriver("https://x/a", open_ticks=3)
+        q: queue.Queue[str] = queue.Queue()
+        q.put("x")
+        calls: list[tuple[str, int]] = []
+
+        def audit_fn(_driver, url):
+            return [_finding("1.4.3", "error", url), _finding("2.4.3", "needs-review", url)]
+
+        _run_audit_loop(
+            driver,
+            q,
+            poll_interval=0,
+            audit_fn=audit_fn,
+            on_audit=lambda url, n: calls.append((url, n)),
+        )
+        assert calls == [("https://x/a", 2)]
+
 
 class TestAuditPage:
     def test_captures_evidence_when_dir_given(self, monkeypatch) -> None:
@@ -204,8 +222,8 @@ class TestCli:
 
         calls: dict[str, object] = {}
 
-        def fake_run(url, out, *, headless):
-            calls.update(url=url, out=out, headless=headless)
+        def fake_run(url, out, *, headless, on_audit=None):
+            calls.update(url=url, out=out, headless=headless, on_audit=on_audit)
             return SessionResult(
                 audited_urls=("https://x/a",),
                 findings=[],
@@ -218,6 +236,7 @@ class TestCli:
         assert rc == 0
         assert calls["url"] == "https://x/a"
         assert calls["headless"] is True
+        assert callable(calls["on_audit"])  # CLI wires the per-audit feedback
 
     def test_once_flag_invokes_run_once_not_session(
         self, monkeypatch, tmp_path

@@ -81,10 +81,17 @@ def main(argv: list[str] | None = None) -> int:
 def _run_interactive(args: argparse.Namespace) -> int:
     """Run the hand-driven hotkey session and print a short summary."""
     print(
-        "Opening Firefox. Browse to any page you want checked and press "
-        "Ctrl+Alt+A to audit it; close the window when you're done."
+        "Opening Firefox. Browse to a page you want checked, click into the "
+        "page (so it has keyboard focus), then press Ctrl+Alt+A to audit it. "
+        "Each audit is confirmed below. Close the window when you're done."
     )
-    result = session.run_session(args.url, args.out, headless=args.headless)
+
+    def _confirm(url: str, count: int) -> None:
+        print(f"  audited {url} — {count} finding(s)")
+
+    result = session.run_session(
+        args.url, args.out, headless=args.headless, on_audit=_confirm
+    )
 
     print(
         f"Audited {len(result.audited_urls)} page(s); "

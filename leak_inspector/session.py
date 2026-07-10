@@ -105,16 +105,18 @@ def run_session(
     *,
     headless: bool = False,
     poll_interval: float = DEFAULT_POLL_INTERVAL,
+    on_audit: Callable[[str, int], None] | None = None,
 ) -> SessionResult:
     """Drive a full interactive audit session and write the reports.
 
     Opens Firefox on ``target_url``, installs the audit hotkey, and audits
     the live page on each ``Ctrl+Alt+A``, saving a PNG of every flagged
-    element to ``<output_dir>/screenshots/`` as evidence. Blocks until the
-    operator closes the window, then writes the reports to ``output_dir``
-    and returns a :class:`SessionResult`. ``headless`` runs without a
-    visible window (a real desktop is still recommended for accurate focus
-    behaviour).
+    element to ``<output_dir>/screenshots/`` as evidence. ``on_audit`` is
+    called after each hotkey audit with the URL and finding count (the CLI
+    uses it to confirm each press). Blocks until the operator closes the
+    window, then writes the reports to ``output_dir`` and returns a
+    :class:`SessionResult`. ``headless`` runs without a visible window (a
+    real desktop is still recommended for accurate focus behaviour).
     """
     audit_queue: queue.Queue[str] = queue.Queue()
     findings: list[Finding] = []
@@ -133,6 +135,7 @@ def run_session(
                 audit_queue,
                 poll_interval=poll_interval,
                 audit_fn=lambda d, u: audit_page(d, u, screenshot_dir),
+                on_audit=on_audit,
             )
         finally:
             with suppress(Exception):
@@ -237,12 +240,15 @@ def _run_audit_loop(
     *,
     poll_interval: float,
     audit_fn: AuditFn,
+    on_audit: Callable[[str, int], None] | None = None,
 ) -> tuple[list[Finding], list[str]]:
     """Audit on each queued hotkey press until the window closes.
 
     Runs entirely on the main thread: drains ``audit_queue`` (populated by
     the BiDi callback thread), and for each request audits the current
-    page via ``audit_fn`` and records the URL once. Returns the
+    page via ``audit_fn`` and records the URL once. ``on_audit`` is called
+    after each audit with the URL and the number of findings it produced,
+    so the caller can give the operator live feedback. Returns the
     accumulated findings and the first-seen-ordered audited URLs.
     """
     findings: list[Finding] = []
@@ -250,9 +256,12 @@ def _run_audit_loop(
     while _window_open(driver):
         if _drain(audit_queue):
             url = _safe_current_url(driver)
-            findings.extend(audit_fn(driver, url))
+            new_findings = audit_fn(driver, url)
+            findings.extend(new_findings)
             if url and url not in audited_urls:
                 audited_urls.append(url)
+            if on_audit is not None:
+                on_audit(url, len(new_findings))
         else:
             time.sleep(poll_interval)
     return findings, audited_urls

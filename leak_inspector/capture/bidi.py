@@ -65,7 +65,10 @@ _PRELOAD_SCRIPT_JS = """
 function() {
   document.addEventListener('keydown', function(e) {
     if (!e.ctrlKey || !e.altKey || e.shiftKey || e.metaKey) return;
-    if (e.key !== 'a' && e.key !== 'A') return;
+    // Match the physical A key via e.code, not e.key: on some layouts /
+    // on macOS, Alt+A produces a different character (e.key) while
+    // e.code stays 'KeyA'.
+    if (e.code !== 'KeyA') return;
     e.preventDefault();
     e.stopPropagation();
     try {

@@ -6,7 +6,18 @@ order; a clean automated run never implies conformance.
 
 ## Session state — resume here (last worked 2026-07-09)
 
-- **Branch:** `feature/full-page-evidence` (off `main`).
+- **Branch:** `feature/hotkey-feedback` (off `main`). Investigating a
+  "Ctrl+Alt+A isn't working" report. Diagnosis: a driver-injected
+  Ctrl+Alt+A **does** fire the audit callback, so the code path is sound —
+  the likely causes are (a) no per-press feedback (looks dead even when it
+  works) and (b) the physical combo not reaching the page (WM grab, or the
+  page lacking keyboard focus). Changes made: per-audit console feedback
+  (`on_audit` hook through `run_session` → `_run_audit_loop`, wired by the
+  CLI), a "click into the page first" hint, and key match via `e.code ===
+  'KeyA'` instead of `e.key` (robust to macOS/layout Alt-char remapping).
+  Awaiting user retest to confirm whether presses now register; if not,
+  next step is a different/configurable hotkey.
+- (previous) `feature/full-page-evidence` merged to `main`.
 - **Last change (uncommitted on this branch):** finding screenshots are
   now **full-page** with the offending element boxed, instead of tight
   element crops. `wcag/screenshot.py` injects an absolutely-positioned
