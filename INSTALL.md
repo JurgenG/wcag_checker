@@ -1,49 +1,21 @@
 # Installing wcag-checker
 
-This guide assumes **zero technical experience**. It walks you from a
-fresh computer to a working `wcag-checker` install. Pick the section for
-your operating system and follow it top to bottom — every command is
-meant to be copy-pasted, and there are checkpoints along the way so you
-can confirm each step worked before moving on.
+Step-by-step install from a fresh machine. Pick your OS section and follow
+it top to bottom; each step ends in a checkpoint. If a checkpoint fails,
+that step is the one to report.
 
-If something goes wrong at a checkpoint, that's the step to share with
-whoever helps you — not the final error, but the first checkpoint where
-the expected output didn't appear.
+wcag-checker opens a visible Firefox, audits a page's rendered state for
+WCAG 2.2 AA issues, and writes reports (JSON, text, Markdown, HTML) plus a
+manual-review checklist and per-finding screenshots. See
+[README.md](README.md) for usage.
 
-**What you'll end up with:** a tool you run from the terminal that opens
-a Firefox window, navigates to a URL you give it, and audits that page's
-live, fully-rendered state for WCAG 2.2 AA accessibility issues. It
-writes the report in four formats — JSON, plain text, Markdown, and a
-self-contained HTML page.
+Everything except Python, Git (and Homebrew on macOS) installs into the
+project folder's `.venv/`; deleting the folder removes it. See
+[Uninstalling](#uninstalling).
 
-> **Note — two ways to run it.** By default the `wcag-checker` command
-> opens Firefox and lets you browse by hand, auditing each page you press
-> **Ctrl+Alt+A** on, then writes a report when you close the window. With
-> `--once` the same command audits a single page non-interactively and
-> exits — handy for the quick install check below, and for pages that
-> redirect too fast to press the hotkey. See the "Project status" section
-> of [README.md](README.md).
-
-**A note about keeping your computer clean.** Almost everything this
-install needs goes into a single project folder. Inside it, a hidden
-subfolder called `.venv/` holds a self-contained copy of Python's package
-manager and every package wcag-checker depends on. If you ever decide to
-remove the tool, deleting the project folder removes 99% of what was
-installed. See [Uninstalling](#uninstalling) at the end for the full
-cleanup recipe.
-
-The only things that get installed system-wide are: **Python itself**,
-**Git** (for downloading the source), and (on macOS) **Homebrew** as the
-installer for the previous two. These are general-purpose tools many
-people want anyway — leaving them on your system has no impact.
-
-**You need a real desktop.** wcag-checker opens a *visible* Firefox
-window and measures things like keyboard focus and tab order, which only
-behave correctly on a normal graphical desktop. It is **not** a headless
-or server tool — run it on the computer you're physically sitting in
-front of, not over a plain SSH connection.
-
-**Estimated time:** 20–30 minutes for a first install.
+The keyboard/focus checks need a real graphical desktop — run it on a
+machine you are sitting at, not a plain SSH session. `--headless` exists
+but those checks are less reliable without a display.
 
 ---
 
@@ -60,66 +32,46 @@ front of, not over a plain SSH connection.
 
 ## Windows
 
-### Windows step 1 — Install Firefox
+### 1 — Firefox
 
-You probably already have Firefox. If not:
+If not already installed, get it from
+<https://www.mozilla.org/firefox/new/> and run the installer with defaults.
 
-1. Open your current browser and go to <https://www.mozilla.org/firefox/new/>.
-2. Click the big "Download" button.
-3. Run the downloaded installer. Accept the defaults.
+Checkpoint: Start menu → type `firefox` → Enter opens a Firefox window.
 
-**Checkpoint:** open the Start menu, type `firefox`, press Enter. A
-Firefox window appears. Close it again.
+### 2 — Python
 
-### Windows step 2 — Install Python
+1. <https://www.python.org/downloads/windows/> → "Latest Python 3 Release"
+   (3.12 or newer).
+2. Download "Windows installer (64-bit)".
+3. Run it. **Tick "Add python.exe to PATH"**, then "Install Now".
 
-1. Go to <https://www.python.org/downloads/windows/>.
-2. Click "Latest Python 3 Release" (any 3.12 or newer is required).
-3. Scroll to the bottom of that page and download
-   "Windows installer (64-bit)".
-4. Run the installer. **Important: tick the box "Add python.exe to
-   PATH" at the bottom of the first installer screen**, then click
-   "Install Now".
-
-
-**Checkpoint:** open the Start menu, type `cmd`, press Enter. A
-black window opens. Type:
+Checkpoint: open `cmd` and run:
 
 ```cmd
 python --version
 ```
 
-Press Enter. You should see something like `Python 3.12.5` (it must be
-3.12 or newer). If you see "command not found" or "is not recognized",
-the PATH checkbox was missed — re-run the installer, tick the box, and
-pick "Modify".
+Expect `Python 3.12` or newer. "not recognized" means the PATH box was
+missed — re-run the installer, choose "Modify", tick the box.
 
-> **Tip:** use **cmd**, not PowerShell. PowerShell's default character
-> encoding for redirected output (`> file.html`) is UTF-16, which can
-> corrupt the HTML reports wcag-checker writes. cmd uses UTF-8 and works
-> correctly. (wcag-checker writes reports to files with `--out`, so this
-> only matters if you deliberately redirect output with `>`.)
+Use **cmd**, not PowerShell: PowerShell's `>` redirection writes UTF-16 and
+corrupts the reports. This only matters if you redirect with `>`; `--out`
+is unaffected.
 
-### Windows step 3 — Install Git
+### 3 — Git
 
-Git is the tool that downloads the wcag-checker source code.
+Install from <https://git-scm.com/download/win> (defaults are fine).
 
-1. Go to <https://git-scm.com/download/win>.
-2. Download starts automatically.
-3. Run the installer. Click "Next" through every screen — the
-   defaults are fine.
-
-**Checkpoint:** in your cmd window from before, type:
+Checkpoint:
 
 ```cmd
 git --version
 ```
 
-You should see something like `git version 2.45.0.windows.1`.
+### 4 — Download wcag-checker
 
-### Windows step 4 — Download wcag-checker
-
-In cmd (replace `<your-repository-url>` with the address you were given):
+Replace `<your-repository-url>` with the address you were given:
 
 ```cmd
 cd %USERPROFILE%
@@ -127,131 +79,85 @@ git clone <your-repository-url> wcag-checker
 cd wcag-checker
 ```
 
-**Checkpoint:** you should now be inside a folder called `wcag-checker`.
-Type:
+Checkpoint: `dir` shows `leak_inspector`, `tests`, `README.md`,
+`pyproject.toml`.
 
-```cmd
-dir
-```
-
-You should see folders like `leak_inspector`, `tests`, and files like
-`README.md` and `pyproject.toml`.
-
-### Windows step 5 — Set up a virtual environment
-
-A "virtual environment" is a sandbox where Python packages get
-installed without affecting the rest of your computer. Run:
+### 5 — Virtual environment
 
 ```cmd
 python -m venv .venv
 .venv\Scripts\activate.bat
 ```
 
-**Checkpoint:** your cmd prompt should now start with `(.venv)`. That
-means the sandbox is active.
+Checkpoint: the prompt now starts with `(.venv)`.
 
-### Windows step 6 — Install wcag-checker
-
-Still inside the same cmd window (the prompt should still show
-`(.venv)`):
+### 6 — Install
 
 ```cmd
 pip install -e .
 ```
 
-Don't forget the dot at the end. This also pulls in the axe-core audit
-engine (`axe-selenium-python`) and the rest of the dependencies.
+Note the trailing dot. This pulls in selenium, axe-selenium-python, and
+their dependencies (1–2 minutes the first time).
 
-This downloads a handful of small Python packages (selenium,
-axe-selenium-python, and their dependencies). The first time it
-can take 1–2 minutes.
-
-**Checkpoint:** when it finishes, type:
+Checkpoint:
 
 ```cmd
 wcag-checker --help
 ```
 
-You should see the usage help for `wcag-checker`.
-
-You're done. Jump to [Verify the install worked](#verify-the-install-worked).
+Continue to [Verify the install worked](#verify-the-install-worked).
 
 ---
 
 ## macOS
 
-### macOS step 1 — Install Firefox
+### 1 — Firefox
 
-You probably already have Firefox. If not:
+If not already installed: <https://www.mozilla.org/firefox/new/>, open the
+`.dmg`, drag Firefox into Applications.
 
-1. Open Safari and go to <https://www.mozilla.org/firefox/new/>.
-2. Click "Download".
-3. Open the downloaded `.dmg` file.
-4. Drag the Firefox icon into the Applications folder.
+Checkpoint: Spotlight (`Cmd+Space`) → `firefox` → Enter opens Firefox.
 
-**Checkpoint:** open Spotlight (`Cmd + Space`), type `firefox`,
-press Enter. A Firefox window appears. Close it again.
+### 2 — Command line tools
 
-### macOS step 2 — Install the developer tools
+macOS ships no usable Python by default. Install Apple's command line
+tools:
 
-macOS doesn't ship a usable Python by default. The cleanest way to
-fix that is to install Apple's free developer toolkit, then install
-Python through Homebrew (a tool that makes installing developer
-software easy).
+```bash
+xcode-select --install
+```
 
-1. Open the Terminal app (Spotlight `Cmd + Space`, type `terminal`,
-   press Enter). A black window appears.
-2. Paste this and press Enter:
+Click "Install" in the pop-up (5–10 minutes).
 
-   ```bash
-   xcode-select --install
-   ```
-
-   A graphical pop-up appears asking to install command line tools.
-   Click "Install". This takes 5–10 minutes.
-
-**Checkpoint:** when it's done, run:
+Checkpoint:
 
 ```bash
 git --version
 ```
 
-You should see something like `git version 2.39.5`.
-
-### macOS step 3 — Install Homebrew and Python
-
-In the same Terminal window, paste this and press Enter:
+### 3 — Homebrew and Python
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 
-It will prompt for your Mac login password. Type it (the characters
-won't appear on screen — that's normal) and press Enter. Then press
-Enter again to confirm.
-
-This takes 5–10 minutes. When it finishes, it prints "Next steps"
-with two `eval` commands. **Copy and paste those two commands from
-your screen** and run them — they make `brew` available in the
-current Terminal session.
-
-Then install Python:
+Enter your Mac password when prompted (characters don't show). When it
+finishes, run the two `eval` commands it prints under "Next steps", then:
 
 ```bash
 brew install python@3.12
 ```
 
-**Checkpoint:**
+Checkpoint:
 
 ```bash
 python3 --version
 ```
 
-You should see something like `Python 3.12.5` (it must be 3.12 or newer).
+Expect 3.12 or newer.
 
-### macOS step 4 — Download wcag-checker
-
-Replace `<your-repository-url>` with the address you were given:
+### 4 — Download wcag-checker
 
 ```bash
 cd ~
@@ -259,87 +165,61 @@ git clone <your-repository-url> wcag-checker
 cd wcag-checker
 ```
 
-**Checkpoint:**
+Checkpoint: `ls` shows `leak_inspector`, `tests`, `README.md`,
+`pyproject.toml`.
 
-```bash
-ls
-```
-
-You should see `leak_inspector`, `tests`, `README.md`,
-`pyproject.toml`, and others.
-
-### macOS step 5 — Set up a virtual environment
-
-A "virtual environment" is a sandbox folder inside the project that
-holds every Python package wcag-checker uses. Nothing gets installed
-into your system-wide Python — deleting the project folder removes
-everything. Run:
+### 5 — Virtual environment
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-**Checkpoint:** your Terminal prompt now starts with `(.venv)`. That
-means the sandbox is active.
+Checkpoint: the prompt now starts with `(.venv)`.
 
-### macOS step 6 — Install wcag-checker
+### 6 — Install
 
 ```bash
 pip install -e .
 ```
-Don't forget the dot at the end. This also pulls in the axe-core audit
-engine (`axe-selenium-python`) and the rest of the dependencies.
 
-**Checkpoint:**
+Note the trailing dot. Then:
 
 ```bash
 wcag-checker --help
 ```
 
-You should see the usage help for `wcag-checker`.
-
-Jump to [Verify the install worked](#verify-the-install-worked).
+Continue to [Verify the install worked](#verify-the-install-worked).
 
 ---
 
 ## Linux
 
-These instructions cover the two most common Linux families:
+`apt` (Debian / Ubuntu / Mint / Pop!\_OS) and `dnf` (Fedora / Rocky / Alma
+/ RHEL) are shown; translate for other distributions.
 
-- **Debian / Ubuntu / Linux Mint / Pop!\_OS** — uses `apt`.
-- **Fedora / Rocky / Alma / RHEL** — uses `dnf`.
+### 1 — System packages
 
-If you use Arch / Manjaro / openSUSE / NixOS / something else, you
-already know how to translate these. Skim the dependency list and
-substitute your distribution's package manager.
-
-### Linux step 1 — Install the system requirements
-
-Open a terminal (often `Ctrl + Alt + T`, or look for "Terminal" in
-your applications).
-
-**On Debian / Ubuntu / Mint / Pop!\_OS:**
+Debian / Ubuntu / Mint / Pop!\_OS:
 
 ```bash
 sudo apt update
 sudo apt install -y firefox python3 python3-venv python3-pip git
 ```
 
-If `firefox` isn't found (some Ubuntu versions ship Firefox only as
-a Snap), use:
+If `firefox` isn't found (Snap-only on some Ubuntu releases):
 
 ```bash
 sudo apt install -y firefox-esr
 ```
 
-**On Fedora / Rocky / Alma / RHEL:**
+Fedora / Rocky / Alma / RHEL:
 
 ```bash
 sudo dnf install -y firefox python3 python3-pip git
 ```
 
-**Checkpoint:**
+Checkpoint:
 
 ```bash
 firefox --version
@@ -347,12 +227,9 @@ python3 --version
 git --version
 ```
 
-You should see version numbers for all three. Python needs to be
-3.12 or newer.
+Python must be 3.12 or newer.
 
-### Linux step 2 — Download wcag-checker
-
-Replace `<your-repository-url>` with the address you were given:
+### 2 — Download wcag-checker
 
 ```bash
 cd ~
@@ -360,247 +237,133 @@ git clone <your-repository-url> wcag-checker
 cd wcag-checker
 ```
 
-**Checkpoint:**
+Checkpoint: `ls` shows `leak_inspector`, `tests`, `README.md`,
+`pyproject.toml`.
 
-```bash
-ls
-```
-
-You should see `leak_inspector`, `tests`, `README.md`,
-`pyproject.toml`, and others.
-
-### Linux step 3 — Set up a virtual environment
-
-A "virtual environment" is a sandbox folder inside the project that
-holds every Python package wcag-checker uses. Nothing gets installed
-into your system-wide Python — deleting the project folder removes
-everything. Run:
+### 3 — Virtual environment
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-**Checkpoint:** your prompt now starts with `(.venv)`. That means the
-sandbox is active.
+Checkpoint: the prompt now starts with `(.venv)`.
 
-### Linux step 4 — Install wcag-checker
+### 4 — Install
 
 ```bash
 pip install -e .
 ```
-Don't forget the dot at the end. This also pulls in the axe-core audit
-engine (`axe-selenium-python`) and the rest of the dependencies.
 
-**Checkpoint:**
+Note the trailing dot. Then:
 
 ```bash
 wcag-checker --help
 ```
 
-You should see the usage help for `wcag-checker`.
-
-Jump to [Verify the install worked](#verify-the-install-worked).
+Continue to [Verify the install worked](#verify-the-install-worked).
 
 ---
 
 ## Verify the install worked
 
-Still in the terminal where your prompt shows `(.venv)`, run:
+With `(.venv)` active:
 
 ```bash
 wcag-checker https://example.com --once --out reports/
 ```
 
-The first time you run it, Selenium downloads a matching `geckodriver`
-automatically — that's expected and only happens once.
+On first run, Selenium downloads a matching `geckodriver` (once). Then
+Firefox opens, the page is audited, a summary prints, Firefox closes, and
+`reports/` holds the output.
 
-Then several things should happen, on their own:
+Open the HTML report:
 
-1. A fresh Firefox window opens and navigates to `example.com`.
-2. The tool audits the page as it is rendered, prints a summary of the
-   findings — grouped by WCAG criterion — to your terminal, and writes
-   the report.
-3. Firefox closes by itself, and a `reports/` folder now contains the
-   results.
+- Windows: `start reports\report.html`
+- macOS: `open reports/report.html`
+- Linux: `xdg-open reports/report.html`
 
-Open the HTML report to review the findings:
-
-- **Windows:** `start reports\report.html`
-- **macOS:** `open reports/report.html`
-- **Linux:** `xdg-open reports/report.html`
-
-`example.com` is a tiny page with very few accessibility issues, so the
-report will be short. That's expected.
-
-**If you see all of the above:** the install worked.
-
-That was the single-page runner (deterministic, no interaction — ideal
-for this check). For real audits, use the interactive command and press
-**Ctrl+Alt+A** on each page you want checked:
+For interactive audits, drop `--once`, press `Ctrl+Alt+A` on each page you
+want checked, then close the window:
 
 ```bash
 wcag-checker https://example.com --out reports/
 ```
 
-A Firefox window opens; browse to whatever you want to check, press
-**Ctrl+Alt+A** on each page, then close the window. The reports land in
-`reports/`.
+See [README.md](README.md) for all three run modes.
 
 ---
 
 ## Common problems
 
-### "wcag-checker: command not found"
+**"wcag-checker: command not found"** — the virtual environment isn't
+active (see below) or the install didn't finish. With `(.venv)` showing,
+run `pip install -e .` again from inside the project folder.
 
-Either the virtual environment isn't active (see the next entry) or the
-install step didn't finish. With `(.venv)` showing in your prompt, run
-`pip install -e .` again from inside the `wcag-checker` folder you cloned.
+**Prompt lost its `(.venv)`** — re-activate it (needed in every new
+terminal):
 
-### The tool won't start / my prompt lost its `(.venv)`
+- Windows cmd: `.venv\Scripts\activate.bat`
+- macOS / Linux: `source .venv/bin/activate`
 
-Your virtual environment isn't active. Look at your prompt: if it
-doesn't start with `(.venv)`, run:
+**"geckodriver … might not be compatible"** — a warning, usually harmless.
+If runs actually fail, update Firefox (or geckodriver) so their versions
+match, or clear Selenium's cached driver so it re-downloads one.
 
-- **Windows cmd:** `.venv\Scripts\activate.bat`
-- **macOS / Linux:** `source .venv/bin/activate`
+**"ModuleNotFoundError: No module named 'leak_inspector'"** (or
+`'axe_selenium_python'`) — `pip install -e .` didn't complete. With
+`(.venv)` active and inside the project folder, run it again (mind the
+trailing dot).
 
-(You need to do this every time you open a new terminal to use the tool.
-There's no harm in it — it just points the terminal at the sandbox that
-holds the tool and its packages.)
+**Firefox opens then closes / never appears:**
 
-### "geckodriver version 0.36.0 might not be compatible…"
+- Snap Firefox (some Ubuntu releases) can't be driven by Selenium — use
+  `firefox-esr` or Mozilla's PPA build.
+- No display (SSH / server) — the default and interactive modes need a
+  real desktop.
 
-A warning, not an error. Selenium has noticed your Firefox is newer
-than the bundled geckodriver. In most cases it works anyway. If runs
-actually fail, delete the bundled geckodriver and re-run — Selenium
-will fetch a matching one:
+**"permission denied"** — no wcag-checker command needs `sudo`. Permission
+errors during `pip install` mean the virtual environment isn't active.
 
-- **Windows:** delete `.venv\Lib\site-packages\selenium\webdriver\common\linux\geckodriver.exe`.
-- **macOS / Linux:** delete `.venv/bin/geckodriver`.
+**Saved HTML shows `��` and spaced-out letters** — you redirected output
+with PowerShell `>` (UTF-16). Use `--out` (writes UTF-8), or run in cmd.
 
-### "ModuleNotFoundError: No module named 'leak_inspector'"
-
-The `pip install -e .` step didn't complete or wasn't run inside the
-project folder. Make sure you're in the right folder (`pwd` on
-macOS/Linux shows it) and that the virtual environment is active, then
-run `pip install -e .` again. Don't forget the dot at the end.
-
-### "ModuleNotFoundError: No module named 'axe_selenium_python'"
-
-The audit engine ships as a dependency of the package, so this usually
-means `pip install -e .` didn't finish. With the virtual environment
-active, run it again:
-
-```bash
-pip install -e .
-```
-
-### Firefox opens but immediately closes / never appears
-
-Two common causes:
-
-- **Firefox is the Ubuntu Snap version.** Snap-Firefox cannot be
-  driven by Selenium reliably. Install the regular Firefox from
-  Mozilla's PPA, or use `firefox-esr` from `apt`.
-- **You're running over SSH or on a server without a display.**
-  wcag-checker needs a real desktop — it opens a visible window and
-  measures keyboard focus behavior, so it cannot run headless. Run it
-  on the computer you're physically sitting in front of.
-
-### "permission denied" when running commands
-
-You shouldn't need `sudo` for any wcag-checker command. If you see
-permission errors during `pip install`, your virtual environment isn't
-active — re-activate it (see the first item in this list).
-
-### My saved HTML report shows `��` and spaces between every letter
-
-Symptom: you redirected output yourself in PowerShell (e.g. with `>`),
-and the resulting file opens as garbled text with a `��` at the start.
-
-Cause: PowerShell's `>` writes UTF-16 LE with a byte-order mark by
-default. wcag-checker outputs UTF-8. The mismatch corrupts the file.
-
-Fix: use the `--out` option (which writes UTF-8 files directly) instead
-of redirecting with `>`, or re-run in **cmd** rather than PowerShell.
-
-### Anything else
-
-When asking for help, include:
-
-1. Your operating system and version (e.g. "Ubuntu 24.04",
-   "macOS 14.5", "Windows 11").
-2. The first checkpoint above that didn't produce the expected output.
-3. The exact text of the error message.
+When asking for help, include your OS and version, the first failed
+checkpoint, and the exact error text.
 
 ---
 
 ## Uninstalling
 
-Everything you did during this install can be undone. Pick the level
-of cleanup you want.
+### Remove wcag-checker
 
-### Level 1 — Just remove wcag-checker
+Deletes the tool and every report it wrote; leaves Python, Firefox, and Git.
 
-This removes the tool, along with every report it wrote. It does **not**
-touch Python, Firefox, or Git — keep those if you ever want to reinstall,
-or if other software on your computer uses them.
+- Windows (cmd): `cd %USERPROFILE% && rmdir /s /q wcag-checker`
+- macOS / Linux: `cd ~ && rm -rf wcag-checker`
 
-- **Windows (cmd):**
+Everything (`.venv`, packages, reports) lives in that one folder.
 
-  ```cmd
-  cd %USERPROFILE%
-  rmdir /s /q wcag-checker
-  ```
+### Also remove the system tools
 
-- **macOS / Linux:**
+Only if nothing else needs them.
 
-  ```bash
-  cd ~
-  rm -rf wcag-checker
-  ```
-
-That's the whole wcag-checker footprint: one folder in your home
-directory. The virtual environment, the Python packages (`selenium`,
-`axe-selenium-python`, and their dependencies), and every report — all of
-it lives inside that folder.
-
-### Level 2 — Also remove the system tools
-
-Only do this if you're certain no other software needs them.
-
-- **Windows:** open Settings → Apps → Installed apps, find "Python
-  3.x" and "Git" in the list, click each one and choose Uninstall.
-- **macOS:**
+- Windows: Settings → Apps → Installed apps → uninstall "Python 3.x" and
+  "Git".
+- macOS:
 
   ```bash
   brew uninstall python@3.12
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)"
   ```
 
-  The second command also removes Homebrew itself. Apple's command
-  line tools (Xcode CLI) can stay — they're harmless.
-- **Linux (Debian / Ubuntu / Mint):**
+- Linux (apt): `sudo apt remove --purge python3-venv python3-pip`
+- Linux (dnf): `sudo dnf remove python3-pip`
 
-  ```bash
-  sudo apt remove --purge python3-venv python3-pip
-  ```
+Don't remove `python3` or `git` themselves — the desktop relies on them.
 
-  Don't remove `python3` itself or `git` — many parts of your Linux
-  desktop rely on them.
-- **Linux (Fedora / Rocky / Alma):**
+### Firefox profiles
 
-  ```bash
-  sudo dnf remove python3-pip
-  ```
-
-  Same caveat: don't remove `python3` or `git`.
-
-### Optional — Firefox profiles
-
-The runner always launches Firefox with a **fresh temporary profile**
-that is deleted automatically when the audit finishes, so there is
-nothing extra to clean up. (Auditing while logged in, by reusing an
-existing profile, is part of the planned interactive workflow and is not
-available yet.)
+Each run launches Firefox with a fresh temporary profile that is deleted
+when the audit finishes, so there is nothing extra to clean up. To audit
+authenticated pages, log in during an interactive (`wcag-checker`) session.
