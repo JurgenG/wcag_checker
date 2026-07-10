@@ -27,6 +27,7 @@ Every part of the intended workflow works today:
 | Report renderer — `results.json` + text + Markdown + HTML, with coverage summary | ✅ working |
 | Manual-review checklist for the criteria tooling can't decide, with step-by-step review questions per criterion | ✅ working |
 | One-shot single-page audit (`wcag-checker --once`) | ✅ working |
+| Batch audit over a URL list (`wcag-batch`) | ✅ working |
 | Interactive **hotkey** session (browse by hand, press `Ctrl+Alt+A` per page) | ✅ working |
 | `wcag-checker` console command | ✅ working |
 | Per-finding screenshots (a PNG of each flagged element as evidence) | ✅ working |
@@ -126,6 +127,27 @@ Findings by criterion
       [color-contrast] violation: Elements must meet minimum color contrast ...
 ```
 
+### Batch audit (`wcag-batch`)
+
+Audit a whole list of URLs unattended — one report directory per site
+plus an aggregate summary:
+
+```bash
+wcag-batch urls.txt --out runs/
+wcag-batch bulk-tool/datasets/publiq/domains.csv --out runs/ --limit 20
+```
+
+The list is one URL per line (`#` comments and blank lines ignored). One
+Firefox is reused across the list; each site runs the same one-shot audit
+into `runs/<site>/` (full reports + screenshots), and a site that fails
+(DNS error, timeout, …) is recorded so the run continues. At the end,
+`runs/summary.{json,md,html}` gives one row per site — its findings by
+severity, or its failure — linking to each per-site report. Options:
+`--out DIR` (default `runs/`), `--limit N`, and `--headless` (a visible
+desktop is still preferred for accurate focus checks). The
+`bulk-tool/datasets/` folder ships example domain lists (Belgian
+hospitals, schools, municipalities, …).
+
 ## What gets checked
 
 Two engines run against the live page and their findings are merged and
@@ -190,13 +212,13 @@ a criterion with no automated finding is not a pass.
 
 ## Roadmap
 
-The core is complete: both run modes (`wcag-checker` interactive and
-`--once`), the axe-core and keyboard/focus engines, per-finding
-screenshots, the manual-review checklist with step-by-step questions, and
-packaging are all in place, and the privacy-tool code the fork started
-from has been removed. Possible future work (tracked in
-[TODO.md](TODO.md)) includes turning the kept domain-list datasets under
-`bulk-tool/` into a batch-audit mode.
+The core is complete: three run modes (`wcag-checker` interactive,
+`wcag-checker --once`, and `wcag-batch` over a URL list), the axe-core and
+keyboard/focus engines, per-finding screenshots, the manual-review
+checklist with step-by-step questions, and packaging are all in place,
+and the privacy-tool code the fork started from has been removed. There
+is no committed roadmap beyond this; open ideas are tracked in
+[TODO.md](TODO.md).
 
 ## Scope / non-goals
 

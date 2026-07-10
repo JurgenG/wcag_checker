@@ -53,6 +53,7 @@ dev = [
 
 [project.scripts]
 wcag-checker = "leak_inspector.cli:main"
+wcag-batch = "leak_inspector.cli_batch:main"
 
 [tool.setuptools.packages.find]
 include = ["leak_inspector*"]

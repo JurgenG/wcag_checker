@@ -6,27 +6,19 @@ order; a clean automated run never implies conformance.
 
 ## Session state — resume here (last worked 2026-07-09)
 
-- **Branch:** `feature/trim-bidi-events` (branched off `main` after
-  `feature/prune-recording` was fast-forward merged). Branch-style
-  development — start each new step on its own branch off `main`.
-- **Uncommitted on this branch, ready to commit:** trimmed the last of
-  the privacy heritage out of the *live* capture layer —
-  - `capture/bidi.py` rewritten (782 → ~230 lines) to just the audit
-    hotkey: preload script + `before_request_sent` → sentinel →
-    `audit_requested_callback`. Removed the request/response correlator,
-    body capture, JSON redaction, navigation/log events, the event sink,
-    the data collector, and the dead `Ctrl+Alt+S` screenshot sentinel.
-  - `events.py` deleted (only the recorder used it); `EventIdCounter`
-    dropped from `capture/__init__.py`.
-  - `session.py`: `BiDiCapture(driver)` (no event-sink arg).
-  - Tests: deleted `test_events.py` + `test_capture_response_redaction.py`;
-    rewrote the signal test as `test_capture_audit_signal.py`.
-  - Docs: `CLAUDE.md`, `PROJECT.md` hotkey sections updated.
-- **Tests:** full suite green — **144 passing**. Run with
-  `. .venv/bin/activate && python -m pytest -q`. The `Ctrl+Alt+A` chain
-  was also verified live end-to-end (synthetic keypress → callback).
-- **Next build step:** nothing queued — the tree is now just the WCAG
-  product. Possible future direction: a `bulk-tool/` batch-audit mode.
+- **Branch:** on `main`. The `wcag-batch` batch-audit mode was committed
+  directly to `main` (the per-step feature branch was skipped by mistake
+  — resume the branch-first workflow for the next step).
+- **Last change (committed):** the `wcag-batch` batch-audit mode —
+  - `leak_inspector/batch.py` (`run_batch` + pure `read_urls`/`site_slug`/
+    `render_summary_*`) and `leak_inspector/cli_batch.py` (the
+    `wcag-batch` entry point, added to `pyproject.toml`).
+  - `tests/test_batch.py` (hermetic: fake driver + canned audit).
+  - `README.md`, `TODO.md` updated; `/runs/` git-ignored.
+- **Tests:** full suite green — **156 passing**. Run with
+  `. .venv/bin/activate && python -m pytest -q`. Live-smoked on the
+  `tinyset` dataset (2 audited, 1 DNS-failure recorded, continued).
+- **Next build step:** nothing queued — the TODO is fully checked off.
 - **Env note:** venv at `.venv`; runtime deps are now just `selenium` +
   `axe-selenium-python` (`pip install -e .` pulls them in).
 
@@ -165,3 +157,14 @@ order; a clean automated run never implies conformance.
       `render_json` adds a `questions` array. A completeness test pins
       that the question set exactly matches the review criteria (no gaps,
       no drift). Tests in `tests/test_wcag_manual_checklist.py`.
+- [x] Batch-audit mode (`wcag-batch`) — `leak_inspector/batch.py` +
+      `cli_batch.py` audit a plain-text URL list (one per line), reusing
+      one Firefox and running the `--once` flow per site into
+      `<out>/<site>/` (full report set + screenshots). A failing site is
+      recorded (single-line error) and the run continues; an aggregate
+      `summary.{json,md,html}` gives one row per site (findings by
+      severity or failure) linking to each per-site report. `--limit`
+      caps large lists; visible by default (`--headless` to hide). Reads
+      the `bulk-tool/datasets/*/domains.csv` example lists. Hermetic tests
+      in `tests/test_batch.py`; live-smoked on the `tinyset` dataset
+      (2 audited, 1 DNS-failure recorded).

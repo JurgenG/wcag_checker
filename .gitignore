@@ -22,8 +22,9 @@ venv/
 env/
 ENV/
 
-# Audit output (default --out directory; generated reports + screenshots)
+# Audit output (default --out directories; generated reports + screenshots)
 /reports/
+/runs/
 
 # OS cruft
 .DS_Store
