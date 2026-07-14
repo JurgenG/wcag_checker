@@ -62,6 +62,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="run Firefox hidden (focus/keyboard checks are less reliable)",
     )
     parser.add_argument(
+        "--width",
+        type=int,
+        default=None,
+        metavar="PX",
+        help=(
+            "resize the browser window to this pixel width before auditing "
+            "every site, to check responsive/mobile layouts (default: "
+            "Firefox's own window width)"
+        ),
+    )
+    parser.add_argument(
         "--format",
         default="html",
         metavar="FMT",
@@ -85,6 +96,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Invalid --format {args.format!r}: {exc}")
         return 2
 
+    if args.width is not None and args.width <= 0:
+        print(f"Invalid --width {args.width!r}: must be a positive number of pixels")
+        return 2
+
     urls = batch.read_urls(args.urls_file)
     planned = len(urls) if args.limit is None else min(len(urls), args.limit)
     print(f"Auditing {planned} of {len(urls)} URL(s) from {args.urls_file}...")
@@ -93,6 +108,7 @@ def main(argv: list[str] | None = None) -> int:
         urls,
         args.out,
         headless=args.headless,
+        width=args.width,
         limit=args.limit,
         source=str(args.urls_file),
         formats=formats,

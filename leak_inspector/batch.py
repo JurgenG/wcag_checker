@@ -155,6 +155,7 @@ def run_batch(
     output_dir: Path | str,
     *,
     headless: bool = False,
+    width: int | None = None,
     limit: int | None = None,
     source: str | None = None,
     formats: tuple[str, ...] = DEFAULT_FORMATS,
@@ -167,8 +168,10 @@ def run_batch(
     runs the one-shot audit flow, and any site that raises is recorded as
     ``"failed"`` and the run continues. ``limit`` caps how many are audited
     (the first N); ``source`` labels the summary; ``formats`` selects the
-    per-site report format(s). Returns a :class:`BatchResult`; the per-site
-    reports and the ``summary.*`` files are written under ``output_dir``.
+    per-site report format(s); ``width``, if given, resizes the window to
+    that pixel width so every site is audited at a responsive/mobile
+    layout. Returns a :class:`BatchResult`; the per-site reports and the
+    ``summary.*`` files are written under ``output_dir``.
     """
     out = Path(output_dir)
     selected = urls if limit is None else urls[:limit]
@@ -176,7 +179,7 @@ def run_batch(
 
     taken: set[str] = set()
     sites: list[SiteResult] = []
-    with launch_driver(headless=headless) as launched:
+    with launch_driver(headless=headless, width=width) as launched:
         driver = launched.driver
         for name, url in selected:
             slug = site_slug(url, taken)

@@ -150,6 +150,7 @@ def run_session(
     output_dir: Path | str,
     *,
     headless: bool = False,
+    width: int | None = None,
     poll_interval: float = DEFAULT_POLL_INTERVAL,
     on_audit: Callable[[str, int], None] | None = None,
     hotkey: str = DEFAULT_HOTKEY,
@@ -165,13 +166,14 @@ def run_session(
     each press). Blocks until the operator closes the window, then writes
     the reports to ``output_dir`` and returns a :class:`SessionResult`.
     ``headless`` runs without a visible window (a real desktop is still
-    recommended for accurate focus behaviour).
+    recommended for accurate focus behaviour). ``width``, if given, resizes
+    the window to that pixel width for auditing a responsive/mobile layout.
     """
     findings: list[Finding] = []
     audited_urls: list[str] = []
     screenshot_dir = Path(output_dir) / SCREENSHOT_DIRNAME
 
-    with launch_driver(headless=headless) as launched:
+    with launch_driver(headless=headless, width=width) as launched:
         driver = launched.driver
         watcher = HotkeyWatcher(driver, hotkey=hotkey)
         driver.get(target_url)
@@ -200,6 +202,7 @@ def run_once(
     output_dir: Path | str,
     *,
     headless: bool = False,
+    width: int | None = None,
     formats: tuple[str, ...] = DEFAULT_FORMATS,
 ) -> SessionResult:
     """Audit a single page non-interactively and write the reports.
@@ -211,13 +214,14 @@ def run_once(
     :class:`SessionResult`. Unlike :func:`run_session` there is no audit
     hotkey and no window-close wait — it audits once and exits, which also
     handles pages that redirect or vanish too fast to press the hotkey by
-    hand. ``headless`` runs without a visible window.
+    hand. ``headless`` runs without a visible window; ``width``, if given,
+    resizes the window to that pixel width for a responsive/mobile layout.
 
     ``SessionResult.audited_urls`` holds the single URL the page settled
     on; when that differs from ``target_url`` a redirect occurred.
     """
     screenshot_dir = Path(output_dir) / SCREENSHOT_DIRNAME
-    with launch_driver(headless=headless) as launched:
+    with launch_driver(headless=headless, width=width) as launched:
         driver = launched.driver
         driver.get(target_url)
         audited_url = wait_until_settled(driver)

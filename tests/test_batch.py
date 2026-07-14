@@ -123,7 +123,9 @@ class _FakeDriverCM:
 class TestRunBatch:
     def _patch(self, monkeypatch):
         monkeypatch.setattr(
-            batch, "launch_driver", lambda *, headless=False: _FakeDriverCM(_FakeDriver())
+            batch,
+            "launch_driver",
+            lambda *, headless=False, width=None: _FakeDriverCM(_FakeDriver()),
         )
         monkeypatch.setattr(batch, "wait_until_settled", lambda driver: driver.last)
 
@@ -169,7 +171,9 @@ class TestRunBatch:
 
     def test_failure_error_is_single_line(self, monkeypatch, tmp_path) -> None:
         monkeypatch.setattr(
-            batch, "launch_driver", lambda *, headless=False: _FakeDriverCM(_FakeDriver())
+            batch,
+            "launch_driver",
+            lambda *, headless=False, width=None: _FakeDriverCM(_FakeDriver()),
         )
         monkeypatch.setattr(batch, "wait_until_settled", lambda driver: driver.last)
 

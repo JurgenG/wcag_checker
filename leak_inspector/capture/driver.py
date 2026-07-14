@@ -174,6 +174,7 @@ def launch_driver(
     profile_path: Path | str | None = None,
     *,
     headless: bool = False,
+    width: int | None = None,
 ) -> LaunchedDriver:
     """Launch Firefox with BiDi enabled and capture-friendly prefs.
 
@@ -196,6 +197,12 @@ def launch_driver(
         stealth prefs, and ``get_screenshot_as_png`` all still work.
         Some sites do fingerprint the headless profile differently —
         if you're auditing real visitor exposure, use visible mode.
+
+    ``width``:
+      * ``None`` (default) — keep Firefox's default window width.
+      * A positive pixel width — resize the window to that width (keeping
+        the current height) right after launch, so the page is audited at
+        a chosen viewport width for checking responsive/mobile layouts.
     """
     profile_is_temporary = profile_path is None
     if profile_is_temporary:
@@ -224,12 +231,41 @@ def launch_driver(
         options.binary_location = _provision_firefox()
 
     driver = Firefox(options=options)
+    if width is not None:
+        _set_window_width(driver, width)
 
     return LaunchedDriver(
         driver=driver,
         profile_path=resolved_profile,
         profile_is_temporary=profile_is_temporary,
     )
+
+
+def _set_window_width(driver: Any, width: int) -> None:
+    """Resize the driver's window to ``width`` px, keeping its height.
+
+    Used for responsive-layout audits: the caller picks a viewport width
+    (e.g. a phone or tablet breakpoint) and the page is rendered at it.
+    Impure — drives the live browser. Works in both visible and headless
+    Firefox via the WebDriver "Set Window Rect" command.
+
+    Firefox enforces a minimum window width (~500 px), so a narrower
+    request is silently clamped by the browser. When that happens the page
+    is audited *wider* than asked — not the mobile layout the operator
+    wanted — so this reads the achieved width back and warns on stderr
+    rather than let a misleading result pass unremarked.
+    """
+    height = driver.get_window_size()["height"]
+    driver.set_window_size(width, height)
+    achieved = driver.get_window_size()["width"]
+    if achieved != width:
+        print(
+            f"Requested browser width {width}px but Firefox used {achieved}px "
+            "(it enforces a minimum window width). The page was audited at "
+            f"{achieved}px, not {width}px — narrower mobile layouts cannot be "
+            "reproduced this way.",
+            file=sys.stderr,
+        )
 
 
 def _build_options(profile_path: Path, *, headless: bool = False) -> FirefoxOptions:

@@ -260,6 +260,7 @@ class TestCli:
         assert args.once is False
         assert args.hotkey == "f9"
         assert args.format == "html"
+        assert args.width is None
 
     def test_main_invokes_session(self, monkeypatch, tmp_path) -> None:
         from pathlib import Path
@@ -269,10 +270,13 @@ class TestCli:
 
         calls: dict[str, object] = {}
 
-        def fake_run(url, out, *, headless, on_audit=None, hotkey=None, formats=None):
+        def fake_run(
+            url, out, *, headless, width=None, on_audit=None, hotkey=None,
+            formats=None,
+        ):
             calls.update(
-                url=url, out=out, headless=headless, on_audit=on_audit,
-                hotkey=hotkey, formats=formats,
+                url=url, out=out, headless=headless, width=width,
+                on_audit=on_audit, hotkey=hotkey, formats=formats,
             )
             return SessionResult(
                 audited_urls=("https://x/a",),
@@ -287,6 +291,7 @@ class TestCli:
         assert rc == 0
         assert calls["url"] == "https://x/a"
         assert calls["headless"] is True
+        assert calls["width"] is None  # not given → default kept
         assert callable(calls["on_audit"])  # CLI wires the per-audit feedback
         assert calls["hotkey"] == "f9"  # default passed through
         assert calls["formats"] == ("md", "json")  # parsed and passed through
@@ -321,8 +326,10 @@ class TestCli:
 
         calls: dict[str, object] = {}
 
-        def fake_once(url, out, *, headless, formats=None):
-            calls.update(url=url, out=out, headless=headless, formats=formats)
+        def fake_once(url, out, *, headless, width=None, formats=None):
+            calls.update(
+                url=url, out=out, headless=headless, width=width, formats=formats
+            )
             return SessionResult(
                 audited_urls=("https://x/a",),
                 findings=[],
@@ -339,3 +346,32 @@ class TestCli:
         assert rc == 0
         assert calls["url"] == "https://x/a"
         assert calls["headless"] is False
+
+    def test_width_is_passed_through(self, monkeypatch, tmp_path) -> None:
+        from pathlib import Path
+
+        from leak_inspector import cli, session
+        from leak_inspector.session import SessionResult
+
+        calls: dict[str, object] = {}
+
+        def fake_run(url, out, *, headless, width=None, **k):
+            calls.update(width=width)
+            return SessionResult(
+                audited_urls=("https://x/a",), findings=[],
+                output_dir=Path(out), written={},
+            )
+
+        monkeypatch.setattr(session, "run_session", fake_run)
+        rc = cli.main(["https://x/a", "--out", str(tmp_path), "--width", "375"])
+        assert rc == 0
+        assert calls["width"] == 375
+
+    def test_non_positive_width_is_rejected(self, monkeypatch) -> None:
+        from leak_inspector import cli, session
+
+        def fail(*a, **k):  # pragma: no cover - must not run
+            raise AssertionError("run_session called with a bad width")
+
+        monkeypatch.setattr(session, "run_session", fail)
+        assert cli.main(["https://x/a", "--width", "0"]) == 2

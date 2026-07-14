@@ -12,6 +12,57 @@ from pathlib import Path
 from leak_inspector.capture.driver import _build_options
 
 
+class _FakeDriver:
+    """Minimal stand-in exposing the two window-rect calls we use."""
+
+    def __init__(self, width: int = 1280, height: int = 800) -> None:
+        self.size = {"width": width, "height": height}
+
+    def get_window_size(self) -> dict[str, int]:
+        return dict(self.size)
+
+    def set_window_size(self, width: int, height: int) -> None:
+        self.size = {"width": width, "height": height}
+
+
+class _ClampingDriver(_FakeDriver):
+    """Fake that mimics Firefox's minimum-window-width clamp."""
+
+    def __init__(self, minimum: int = 500) -> None:
+        super().__init__()
+        self._minimum = minimum
+
+    def set_window_size(self, width: int, height: int) -> None:
+        self.size = {"width": max(width, self._minimum), "height": height}
+
+
+def test_set_window_width_changes_width_and_keeps_height() -> None:
+    """A responsive-layout audit sets the chosen width, leaving height as-is."""
+    from leak_inspector.capture.driver import _set_window_width
+
+    driver = _FakeDriver(width=1280, height=800)
+    _set_window_width(driver, 375)
+    assert driver.size == {"width": 375, "height": 800}
+
+
+def test_set_window_width_warns_when_firefox_clamps(capsys) -> None:
+    """A width below Firefox's floor is clamped; the operator is warned so a
+    wider-than-asked audit is not mistaken for the requested mobile layout."""
+    from leak_inspector.capture.driver import _set_window_width
+
+    _set_window_width(_ClampingDriver(minimum=500), 375)
+    err = capsys.readouterr().err
+    assert "375" in err and "500" in err
+
+
+def test_set_window_width_silent_when_honoured(capsys) -> None:
+    """No warning when the requested width is actually achieved."""
+    from leak_inspector.capture.driver import _set_window_width
+
+    _set_window_width(_FakeDriver(width=1280, height=800), 768)
+    assert capsys.readouterr().err == ""
+
+
 def test_build_options_includes_profile_path(tmp_path: Path) -> None:
     """The default options invocation still wires the profile dir through."""
     options = _build_options(tmp_path)

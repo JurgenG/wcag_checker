@@ -59,6 +59,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="run Firefox without a visible window (a real desktop is preferred)",
     )
     parser.add_argument(
+        "--width",
+        type=int,
+        default=None,
+        metavar="PX",
+        help=(
+            "resize the browser window to this pixel width before auditing, "
+            "to check a responsive/mobile layout (default: Firefox's own "
+            "window width)"
+        ),
+    )
+    parser.add_argument(
         "--once",
         action="store_true",
         help=(
@@ -102,6 +113,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Invalid --format {args.format!r}: {exc}")
         return 2
 
+    if args.width is not None and args.width <= 0:
+        print(f"Invalid --width {args.width!r}: must be a positive number of pixels")
+        return 2
+
     if args.once:
         return _run_once(args, formats)
 
@@ -129,6 +144,7 @@ def _run_interactive(args: argparse.Namespace, formats: tuple[str, ...]) -> int:
         args.url,
         args.out,
         headless=args.headless,
+        width=args.width,
         on_audit=_confirm,
         hotkey=args.hotkey,
         formats=formats,
@@ -147,7 +163,7 @@ def _run_once(args: argparse.Namespace, formats: tuple[str, ...]) -> int:
     """Run a one-shot single-page audit and print a short summary."""
     print(f"Opening Firefox and auditing {args.url} once...")
     result = session.run_once(
-        args.url, args.out, headless=args.headless, formats=formats
+        args.url, args.out, headless=args.headless, width=args.width, formats=formats
     )
 
     audited = result.audited_urls[0] if result.audited_urls else args.url

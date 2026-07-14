@@ -49,7 +49,10 @@ wcag-checker https://example.com --out reports/
 
 Options: `--out DIR` (default `reports/`), `--headless`, `--hotkey COMBO`
 (default `f9`) — change it if `F9` clashes with something, e.g. `--hotkey
-ctrl+alt+shift+a` — and `--format FMT` (default `html`; see [Output](#output)).
+ctrl+alt+shift+a` — `--width PX` (resize the window to a chosen pixel width
+to audit a responsive/mobile layout, e.g. `--width 375`; Firefox enforces a
+minimum window width of ~500px, so narrower requests are clamped and the
+tool warns), and `--format FMT` (default `html`; see [Output](#output)).
 
 ### One-shot (`wcag-checker --once`)
 
@@ -61,7 +64,8 @@ Opens Firefox, waits for the page to settle (so a client-side redirect
 does not race the audit), audits that page, writes the reports, and
 exits. If the page redirects, the settled URL is audited and reported.
 
-Options: `--out DIR` (default `reports/`), `--headless`, `--format FMT`
+Options: `--out DIR` (default `reports/`), `--headless`, `--width PX`
+(audit at a chosen pixel width, e.g. `--width 375`), and `--format FMT`
 (default `html`; see [Output](#output)).
 
 ### Batch (`wcag-batch`)
@@ -81,8 +85,9 @@ recorded and the run continues. `runs/summary.{json,md,html}` has one row
 per site — findings by severity or the failure — linking to each report.
 
 Options: `--out DIR` (default `runs/`), `--limit N`, `--headless`,
-`--format FMT` (default `html`; see [Output](#output)). Example URL lists
-are in `bulk-tool/datasets/`.
+`--width PX` (audit every site at a chosen pixel width, e.g. `--width
+375`), and `--format FMT` (default `html`; see [Output](#output)). Example
+URL lists are in `bulk-tool/datasets/`.
 
 ## What gets checked
 
