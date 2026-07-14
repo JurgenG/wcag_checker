@@ -45,7 +45,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-from . import text_view
+from . import manual_checklist, text_view
 from .core import CRITERIA_REGISTRY, Finding, WcagCriterion, criterion
 from .text_view import PageTextView
 
@@ -53,6 +53,34 @@ from .text_view import PageTextView
 #: appears in a report when it has findings, so these are the only two
 #: values — never a "pass", which the tool cannot assert.
 Status = Literal["fail", "needs-review"]
+
+#: What the automated run was able to say about a criterion this time, for
+#: the coverage table. ``"findings"`` — automated issues were flagged;
+#: ``"clean-auto"`` — a ``full``-tier criterion was auto-checked and
+#: nothing was flagged (checked, but still *not* a pass); ``"manual"`` —
+#: not decided automatically (a ``partial``/``manual`` criterion with no
+#: automated finding), so it still needs the manual checklist.
+RunStatus = Literal["findings", "clean-auto", "manual"]
+
+#: Human labels for :data:`RunStatus` in the coverage table's "This run"
+#: column (the finding count is substituted for ``"findings"``).
+RUN_STATUS_LABELS: dict[str, str] = {
+    "clean-auto": "no automated finding",
+    "manual": "needs manual review",
+}
+
+#: Legend shown under the coverage table so its columns are unambiguous —
+#: chiefly that neither "no automated finding" nor a missing row is a pass.
+COVERAGE_LEGEND = (
+    "Coverage is how much of a criterion automated tooling can decide: "
+    "'full' (a clean automated check is meaningful evidence), 'partial' "
+    "(tooling flags candidates, a human confirms), 'manual' (no automated "
+    "check — human judgement only). This run: 'N finding(s)' are automated "
+    "issues to fix or triage; 'no automated finding' means the automatable "
+    "part was checked and nothing was flagged — not a pass; 'needs manual "
+    "review' means it was not decided automatically. Work the manual-review "
+    "checklist below for every 'partial'/'manual' criterion regardless."
+)
 
 #: The conformance target this tool audits: WCAG 2.2 levels A and AA.
 #: AAA criteria are out of scope and excluded from the coverage counts.
@@ -158,6 +186,23 @@ class CriterionReport:
 
 
 @dataclass(frozen=True)
+class CoverageRow:
+    """One WCAG 2.2 A+AA criterion's coverage status for this run.
+
+    ``criterion`` is the registry entry, ``run_status`` says what the
+    automated run could determine (see :data:`RunStatus`), and
+    ``finding_count`` is how many findings it produced (0 unless
+    ``run_status`` is ``"findings"``). Present for *every* in-scope
+    criterion — including those with no findings — so the report can state
+    plainly what was and was not automatically checked.
+    """
+
+    criterion: WcagCriterion
+    run_status: RunStatus
+    finding_count: int
+
+
+@dataclass(frozen=True)
 class ReportDocument:
     """The full, format-agnostic audit result.
 
@@ -169,7 +214,9 @@ class ReportDocument:
     an optional site label shown in the heading (e.g. a municipality name).
     ``text_views`` holds the per-page linearized reading views (see
     :mod:`.text_view`), rendered into every format as a *Reading view*
-    manual-review section; empty when none were captured.
+    manual-review section; empty when none were captured. ``coverage`` has
+    one :class:`CoverageRow` per in-scope A+AA criterion (with or without
+    findings), driving the report's explicit *Coverage* table.
     """
 
     summary: CoverageSummary
@@ -177,6 +224,7 @@ class ReportDocument:
     generated_at: str | None
     title: str | None = None
     text_views: tuple[PageTextView, ...] = ()
+    coverage: tuple[CoverageRow, ...] = ()
 
 
 def build_report(
@@ -228,7 +276,33 @@ def build_report(
         generated_at=generated_at,
         title=title,
         text_views=tuple(text_views),
+        coverage=_build_coverage(criteria),
     )
+
+
+def _build_coverage(criteria: Sequence[CriterionReport]) -> tuple[CoverageRow, ...]:
+    """Row up every in-scope A+AA criterion with what this run could say.
+
+    A criterion with findings is ``"findings"``; a ``full``-tier criterion
+    with none is ``"clean-auto"`` (auto-checked, nothing flagged — not a
+    pass); any other (``partial``/``manual`` with no finding) is
+    ``"manual"``. Ordered by criterion number so it reads like the WCAG
+    2.2 AA list.
+    """
+    by_id = {report.criterion.id: report for report in criteria}
+    rows: list[CoverageRow] = []
+    for entry in CRITERIA_REGISTRY:
+        if entry.level not in _IN_SCOPE_LEVELS:
+            continue
+        report = by_id.get(entry.id)
+        if report is not None:
+            rows.append(CoverageRow(entry, "findings", len(report.findings)))
+        elif entry.automatable == "full":
+            rows.append(CoverageRow(entry, "clean-auto", 0))
+        else:
+            rows.append(CoverageRow(entry, "manual", 0))
+    rows.sort(key=lambda row: _criterion_sort_key(row.criterion.id))
+    return tuple(rows)
 
 
 def _status_for(findings: Sequence[Finding]) -> Status:
@@ -346,9 +420,27 @@ def render_json(document: ReportDocument) -> str:
             }
             for report in document.criteria
         ],
+        "coverage": [
+            {
+                "id": row.criterion.id,
+                "name": row.criterion.name,
+                "level": row.criterion.level,
+                "automatable": row.criterion.automatable,
+                "run_status": row.run_status,
+                "finding_count": row.finding_count,
+            }
+            for row in document.coverage
+        ],
         "reading_view": text_view.reading_view_payload(document.text_views),
     }
     return json.dumps(payload, indent=2, ensure_ascii=False)
+
+
+def _run_status_text(row: CoverageRow) -> str:
+    """The 'This run' cell text for a coverage row."""
+    if row.run_status == "findings":
+        return f"{row.finding_count} finding(s)"
+    return RUN_STATUS_LABELS[row.run_status]
 
 
 def render_text(document: ReportDocument) -> str:
@@ -383,6 +475,17 @@ def render_text(document: ReportDocument) -> str:
     lines.extend(textwrap.wrap(DISCLAIMER, width=76))
     lines.append("")
 
+    lines += ["Coverage — all WCAG 2.2 A + AA criteria", "-" * 39]
+    lines.extend(textwrap.wrap(COVERAGE_LEGEND, width=76))
+    lines.append("")
+    for row in document.coverage:
+        crit = row.criterion
+        lines.append(
+            f"  {crit.id:<7} {crit.level:<2} {crit.automatable:<7} "
+            f"{_run_status_text(row):<20} {crit.name}"
+        )
+    lines.append("")
+
     lines += ["Findings by priority", "--------------------"]
     if not document.criteria:
         lines.append("No automated findings.")
@@ -403,7 +506,25 @@ def render_text(document: ReportDocument) -> str:
     reading = text_view.render_text_section(document.text_views)
     if reading:
         lines += ["", reading.rstrip()]
+    lines += ["", _checklist(document, "text").rstrip()]
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _checklist(document: ReportDocument, fmt: str) -> str:
+    """Render the embedded manual-review checklist section in ``fmt``.
+
+    Builds the checklist from the document's audited URLs + timestamp and
+    delegates to :mod:`.manual_checklist`; ``fmt`` is ``"text"``,
+    ``"markdown"`` or ``"html"``.
+    """
+    checklist = manual_checklist.build_checklist(
+        document.summary.urls, generated_at=document.generated_at
+    )
+    if fmt == "markdown":
+        return manual_checklist.render_markdown_section(checklist)
+    if fmt == "html":
+        return manual_checklist.render_html_section(checklist)
+    return manual_checklist.render_text_section(checklist)
 
 
 def render_markdown(document: ReportDocument) -> str:
@@ -443,6 +564,20 @@ def render_markdown(document: ReportDocument) -> str:
         f"| Findings | {sev['error']} error / {sev['warning']} warning / "
         f"{sev['needs-review']} needs-review |"
     )
+    lines.append("")
+
+    lines.append("## Coverage — all WCAG 2.2 A + AA criteria")
+    lines.append("")
+    lines.append(f"> {COVERAGE_LEGEND}")
+    lines.append("")
+    lines.append("| Criterion | Level | Coverage | This run |")
+    lines.append("| --- | --- | --- | --- |")
+    for row in document.coverage:
+        crit = row.criterion
+        lines.append(
+            f"| {crit.id} {crit.name} | {crit.level} | {crit.automatable} "
+            f"| {_run_status_text(row)} |"
+        )
     lines.append("")
 
     lines.append("## Priority overview")
@@ -492,6 +627,7 @@ def render_markdown(document: ReportDocument) -> str:
     reading = text_view.render_markdown_section(document.text_views)
     if reading:
         lines += ["", reading.rstrip()]
+    lines += ["", _checklist(document, "markdown").rstrip()]
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -506,6 +642,15 @@ def _evidence_cell(screenshot: str | None) -> str:
         return "—"
     src = html.escape(screenshot, quote=True)
     return f"<a href='{src}'><img class='evidence' src='{src}' alt='element screenshot'></a>"
+
+
+def _coverage_name_cell(row: CoverageRow) -> str:
+    """Criterion cell for the coverage table; links to its findings anchor."""
+    label = f"{html.escape(row.criterion.id)} {html.escape(row.criterion.name)}"
+    if row.run_status == "findings":
+        anchor = html.escape(row.criterion.id, quote=True)
+        return f"<a href='#crit-{anchor}'>{label}</a>"
+    return label
 
 
 def _pri_pill(priority: Priority) -> str:
@@ -596,6 +741,22 @@ def render_html(document: ReportDocument) -> str:
                 f"<tbody>{rows}</tbody></table></section>"
             )
 
+    coverage_rows = "".join(
+        "<tr>"
+        f"<td>{_coverage_name_cell(row)}</td>"
+        f"<td>{html.escape(row.criterion.level)}</td>"
+        f"<td>{html.escape(row.criterion.automatable)}</td>"
+        f"<td class='run-{row.run_status}'>{html.escape(_run_status_text(row))}</td>"
+        "</tr>"
+        for row in document.coverage
+    )
+    coverage = (
+        f"<p class='cov-legend'>{html.escape(COVERAGE_LEGEND)}</p>"
+        "<table class='coverage'><thead><tr><th>Criterion</th><th>Level</th>"
+        "<th>Coverage</th><th>This run</th></tr></thead>"
+        f"<tbody>{coverage_rows}</tbody></table>"
+    )
+
     return _HTML_TEMPLATE.format(
         subtitle=subtitle,
         generated=generated,
@@ -614,9 +775,11 @@ def render_html(document: ReportDocument) -> str:
         warnings=sev["warning"],
         review=sev["needs-review"],
         disclaimer=html.escape(DISCLAIMER),
+        coverage=coverage,
         triage=triage,
         sections="".join(sections),
         reading_view=text_view.render_html_section(document.text_views),
+        checklist=_checklist(document, "html"),
     )
 
 
@@ -674,6 +837,18 @@ ul.rv-list li.rv-text {{ color: #333; }}
 ul.rv-list li.rv-heading {{ margin-top: 0.3rem; }}
 ul.rv-list li.rv-warn {{ color: #842029; }}
 ul.rv-list code {{ background: #f4f4f4; padding: 0 0.2rem; border-radius: 2px; }}
+.cov-legend {{ color: #555; font-size: 0.85rem; margin: 0.5rem 0 1rem; }}
+table.coverage td.run-findings {{ color: #842029; font-weight: 600; }}
+table.coverage td.run-clean-auto {{ color: #0a5; }}
+table.coverage td.run-manual {{ color: #664d03; }}
+.mc-note {{ color: #555; font-size: 0.85rem; margin: 0.5rem 0 1rem; }}
+details.mc {{ border: 1px solid #ddd; border-radius: 4px; margin: 0.5rem 0;
+  padding: 0.4rem 0.75rem; }}
+details.mc summary {{ cursor: pointer; font-weight: 600; }}
+.mc-crit {{ margin: 0.6rem 0; }}
+ul.mc-list {{ list-style: none; margin: 0.3rem 0 0.6rem; padding-left: 0.5rem;
+  font-size: 0.9rem; }}
+ul.mc-list li {{ padding: 0.1rem 0; }}
 </style>
 </head>
 <body>
@@ -694,11 +869,14 @@ ul.rv-list code {{ background: #f4f4f4; padding: 0 0.2rem; border-radius: 2px; }
 <tr><th>Findings</th><td>{errors} error / {warnings} warning /
   {review} needs-review</td></tr>
 </table>
+<h2>Coverage — all WCAG 2.2 A + AA criteria</h2>
+{coverage}
 <h2>Priority overview</h2>
 {triage}
 <h2>Findings</h2>
 {sections}
 {reading_view}
+{checklist}
 </body>
 </html>
 """
@@ -812,12 +990,15 @@ def _jira_ticket(report: CriterionReport, *, generated_at: str | None) -> str:
 
 
 __all__ = [
+    "COVERAGE_LEGEND",
+    "CoverageRow",
     "CoverageSummary",
     "CriterionReport",
     "DISCLAIMER",
     "PRIORITY_BANDS",
     "Priority",
     "ReportDocument",
+    "RunStatus",
     "Status",
     "build_report",
     "render_html",

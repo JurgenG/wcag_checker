@@ -51,6 +51,21 @@ review" is always better than a false pass.
   - `keyboard_nav.py` — focus/keyboard-flow checks axe-core deliberately
     skips (focus visibility, keyboard traps, tab order, target size).
     The highest-value custom code.
+  - `media.py` — native `<audio>`/`<video>` presence checks for the media
+    criteria axe does not decide: 1.2.1 (audio → transcript) and 1.2.3
+    (video → audio description / alternative), both `needs-review`. axe
+    already owns 1.2.2 (captions) and 1.4.2 (autoplay); those are not
+    duplicated here.
+  - `content.py` — descriptive-text heuristics axe does not judge: 2.4.4
+    (generic link text like "click here") and 2.4.6 (empty headings),
+    both `needs-review`. (2.5.3 Label in Name is handled by enabling
+    axe's experimental `label-content-name-mismatch` rule in
+    `axe_runner`, not here — axe's accessible-name computation is
+    authoritative.)
+  - `reflow.py` — 1.4.10 Reflow: sets a true 320 CSS-px viewport via
+    WebDriver BiDi (`browsing_context.set_viewport`, which beats the
+    ~500px Firefox window floor), flags horizontal overflow as
+    `needs-review`, and restores the operator's viewport afterwards.
   - `manual_checklist.py` — generates the human-review checklist for the
     majority of criteria that cannot be asserted automatically.
   - `text_view.py` — produces an approximate *linearized reading view* of

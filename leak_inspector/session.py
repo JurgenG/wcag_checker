@@ -20,10 +20,10 @@
 Wires the reused capture layer to the WCAG audit engines. It opens a
 visible Firefox, installs the audit hotkey (see :mod:`.capture.hotkey`),
 and on each press audits the page as it is rendered at that instant —
-axe-core plus the keyboard/focus checks — accumulating findings across
-every page the operator marks. When the window closes, it writes the
-report (JSON + text + Markdown + HTML) and the manual-review checklist to
-the output directory.
+axe-core plus the keyboard/focus, media, and reflow checks — accumulating
+findings across every page the operator marks. When the window closes, it
+writes the report (JSON + text + Markdown + HTML) and the manual-review
+checklist to the output directory.
 
 The hotkey is detected by polling: each loop tick runs one
 ``execute_script`` (via :class:`~.capture.hotkey.HotkeyWatcher`) that both
@@ -52,8 +52,11 @@ from .capture.driver import launch_driver
 from .capture.hotkey import DEFAULT_HOTKEY, HotkeyWatcher
 from .wcag import (
     axe_runner,
+    content,
     keyboard_nav,
     manual_checklist,
+    media,
+    reflow,
     reporter,
     screenshot,
     text_view,
@@ -140,15 +143,22 @@ def audit_page(
 ) -> list[Finding]:
     """Run both audit engines against the driver's current page.
 
-    Combines the axe-core audit (:mod:`.wcag.axe_runner`) and the
-    keyboard/focus checks (:mod:`.wcag.keyboard_nav`) into one finding
-    list, all labelled with ``url``. When ``screenshot_dir`` is given,
-    captures an element-level PNG for each finding into it
-    (:mod:`.wcag.screenshot`) while the page is still rendered. Impure:
-    drives the live browser and, with ``screenshot_dir``, writes PNGs.
+    Combines the axe-core audit (:mod:`.wcag.axe_runner`), the media
+    presence checks (:mod:`.wcag.media`), the descriptive-text heuristics
+    (:mod:`.wcag.content`), the keyboard/focus checks
+    (:mod:`.wcag.keyboard_nav`), and the reflow check (:mod:`.wcag.reflow`)
+    into one finding list, all labelled with ``url``. When
+    ``screenshot_dir`` is given, captures an element-level PNG for each
+    finding into it (:mod:`.wcag.screenshot`) while the page is still
+    rendered. Impure: drives the live browser and, with ``screenshot_dir``,
+    writes PNGs. The reflow check runs last because it momentarily resizes
+    the viewport (and restores it), so it must not perturb the others.
     """
     findings = list(axe_runner.audit(driver, url))
+    findings += media.check_media(driver, url)
+    findings += content.run_all(driver, url)
     findings += keyboard_nav.run_all(driver, url)
+    findings += reflow.check_reflow(driver, url)
     if screenshot_dir is not None:
         findings = screenshot.capture_findings(driver, findings, screenshot_dir)
     return findings

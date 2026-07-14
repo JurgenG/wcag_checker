@@ -153,11 +153,16 @@ class TestRunAuditLoop:
 class TestAuditPage:
     def test_captures_evidence_when_dir_given(self, monkeypatch) -> None:
         from leak_inspector import session
-        from leak_inspector.wcag import axe_runner, keyboard_nav, screenshot
+        from leak_inspector.wcag import (
+            axe_runner, content, keyboard_nav, media, reflow, screenshot,
+        )
 
         base = _finding("1.4.3", "error", "https://x/a")
         monkeypatch.setattr(axe_runner, "audit", lambda d, u: [base])
         monkeypatch.setattr(keyboard_nav, "run_all", lambda d, u: [])
+        monkeypatch.setattr(media, "check_media", lambda d, u: [])
+        monkeypatch.setattr(content, "run_all", lambda d, u: [])
+        monkeypatch.setattr(reflow, "check_reflow", lambda d, u: [])
 
         calls: dict[str, object] = {}
 
@@ -173,10 +178,15 @@ class TestAuditPage:
 
     def test_skips_capture_without_dir(self, monkeypatch) -> None:
         from leak_inspector import session
-        from leak_inspector.wcag import axe_runner, keyboard_nav, screenshot
+        from leak_inspector.wcag import (
+            axe_runner, content, keyboard_nav, media, reflow, screenshot,
+        )
 
         monkeypatch.setattr(axe_runner, "audit", lambda d, u: [])
         monkeypatch.setattr(keyboard_nav, "run_all", lambda d, u: [])
+        monkeypatch.setattr(media, "check_media", lambda d, u: [])
+        monkeypatch.setattr(content, "run_all", lambda d, u: [])
+        monkeypatch.setattr(reflow, "check_reflow", lambda d, u: [])
 
         def fail(*args, **kwargs):  # pragma: no cover - must not be called
             raise AssertionError("capture_findings called without a screenshot dir")
@@ -230,12 +240,14 @@ class TestWriteReports:
     def test_reading_view_embedded_in_report_when_views_given(self, tmp_path) -> None:
         from leak_inspector.wcag.text_view import PageTextView, TextNode
 
-        # No views → no separate file and no reading-view section.
+        # No views → no separate file and no reading-view section. (The
+        # phrase "Reading view" appears in the 1.3.2 checklist question, so
+        # assert on the section's own heading text specifically.)
         written = write_reports(tmp_path / "a", [], ["https://x/a"])
         assert "text-view.md" not in written
-        assert "Reading view" not in written["report.html"].read_text(
-            encoding="utf-8"
-        )
+        assert "Reading view (manual-review aid)" not in written[
+            "report.html"
+        ].read_text(encoding="utf-8")
 
         # Views given → the reading view is embedded in the report itself,
         # not written as a separate file.

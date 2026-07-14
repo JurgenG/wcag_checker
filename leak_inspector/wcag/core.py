@@ -132,9 +132,9 @@ class Finding:
 CRITERIA_REGISTRY: tuple[WcagCriterion, ...] = (
     # -- Principle 1: Perceivable -------------------------------------------
     WcagCriterion("1.1.1", "Non-text Content", "A", "full"),
-    WcagCriterion("1.2.1", "Audio-only and Video-only (Prerecorded)", "A", "manual"),
-    WcagCriterion("1.2.2", "Captions (Prerecorded)", "A", "manual"),
-    WcagCriterion("1.2.3", "Audio Description or Media Alternative (Prerecorded)", "A", "manual"),
+    WcagCriterion("1.2.1", "Audio-only and Video-only (Prerecorded)", "A", "partial"),
+    WcagCriterion("1.2.2", "Captions (Prerecorded)", "A", "partial"),
+    WcagCriterion("1.2.3", "Audio Description or Media Alternative (Prerecorded)", "A", "partial"),
     WcagCriterion("1.2.4", "Captions (Live)", "AA", "manual"),
     WcagCriterion("1.2.5", "Audio Description (Prerecorded)", "AA", "manual"),
     WcagCriterion("1.2.6", "Sign Language (Prerecorded)", "AAA", "manual"),
@@ -148,7 +148,7 @@ CRITERIA_REGISTRY: tuple[WcagCriterion, ...] = (
     WcagCriterion("1.3.5", "Identify Input Purpose", "AA", "full"),
     WcagCriterion("1.3.6", "Identify Purpose", "AAA", "manual"),
     WcagCriterion("1.4.1", "Use of Color", "A", "partial"),
-    WcagCriterion("1.4.2", "Audio Control", "A", "manual"),
+    WcagCriterion("1.4.2", "Audio Control", "A", "partial"),
     WcagCriterion("1.4.3", "Contrast (Minimum)", "AA", "full"),
     WcagCriterion("1.4.4", "Resize Text", "AA", "partial"),
     WcagCriterion("1.4.5", "Images of Text", "AA", "manual"),

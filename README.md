@@ -91,12 +91,16 @@ URL lists are in `bulk-tool/datasets/`.
 
 ## What gets checked
 
-Two engines run against the live page; findings are merged and grouped by
-WCAG criterion:
+Several engines run against the live page; findings are merged and grouped
+by WCAG criterion:
 
 - **axe-core**, with the AA tag set (`wcag2a`, `wcag2aa`, `wcag21a`,
   `wcag21aa`, `wcag22aa`): colour contrast, `lang`, name/role/value, ARIA
-  validity, and more. axe "incomplete" results are reported as
+  validity, prerecorded-video captions (1.2.2), autoplaying audio (1.4.2),
+  time limits / meta-refresh (2.2.1), moving content (2.2.2), and more.
+  axe's experimental **label-in-name (2.5.3)** rule is enabled too (a
+  control whose visible text is missing from its accessible name),
+  reported `needs-review`. axe "incomplete" results are reported as
   `needs-review`, not as passes.
 - **Keyboard/focus checks** axe does not perform, each reported as
   `needs-review`:
@@ -104,6 +108,22 @@ WCAG criterion:
   - 2.1.2 — keyboard focus trap
   - 2.4.3 — positive `tabindex` overriding focus order
   - 2.5.8 — targets smaller than 24×24 CSS px
+- **Media presence** (native `<audio>`/`<video>`), each `needs-review`:
+  - 1.2.1 — an `<audio>` is present → confirm a transcript exists
+  - 1.2.3 — a `<video>` is present → confirm an audio description or text
+    alternative exists
+  - (media inside cross-origin `<iframe>` embeds — YouTube/Vimeo — is not
+    visible and stays a manual check.)
+- **Descriptive-text heuristics**, each `needs-review`:
+  - 2.4.4 — links whose text is a generic filler phrase ("click here",
+    "read more", …) that does not describe the destination
+  - 2.4.6 — headings with no text content
+- **Reflow** — at a true 320 CSS-px viewport (set via WebDriver BiDi, then
+  restored), flags horizontal scrolling as a 1.4.10 `needs-review`
+  candidate (data tables and maps are exempt — a human confirms).
+
+These automated candidates never assert a pass; they narrow what a human
+must still confirm. Everything else stays in the manual checklist.
 
 Alongside the findings, every report embeds a **linearized reading view**
 (a *Reading view* section) — the accessible-name tree walked in source
@@ -121,10 +141,10 @@ selects which findings report(s) to write (comma-separated; default
 
 | `--format` | Output | Contents |
 | --- | --- | --- |
-| `html` *(default)* | `report.html` | HTML report (inline styling); findings grouped by criterion, each with a screenshot thumbnail, plus the collapsible reading-view section. |
+| `html` *(default)* | `report.html` | HTML report (inline styling); findings grouped by criterion, each with a screenshot thumbnail, plus the coverage table, the collapsible reading-view section, and the collapsible manual-review checklist. |
 | `md` | `report.md` | Markdown report. |
 | `txt` | `report.txt` | Plain-text report. |
-| `json` | `results.json` | Machine-readable result: each finding (criterion id, severity, message, selector, screenshot path), the coverage summary, and the reading view (`reading_view`). |
+| `json` | `results.json` | Machine-readable result: each finding (criterion id, severity, message, selector, screenshot path), the coverage summary, the per-criterion coverage table (`coverage`), and the reading view (`reading_view`). |
 | `jira-tickets` | `jira/*.md` | One JIRA-style Markdown ticket per issue type (WCAG criterion): fields, affected elements, acceptance criteria. |
 | `all` | all of the above | |
 
@@ -134,6 +154,16 @@ Always written, regardless of `--format`:
 | --- | --- |
 | `manual-checklist.md` | Review checklist: the 46 A + AA criteria tooling cannot decide, each with step-by-step questions, per audited page. |
 | `screenshots/` | One PNG per flagged element (one shot per element, reused across criteria). Findings reference these by relative path. |
+
+Every report makes coverage **explicit**: a *Coverage — all WCAG 2.2 A + AA
+criteria* table lists every in-scope criterion with its coverage tier
+(`full` / `partial` / `manual`) and what this run could say about it —
+`N finding(s)`, `no automated finding` (the automatable part was checked
+and nothing was flagged — *not* a pass), or `needs manual review` (not
+decided automatically). The **manual-review checklist** (the actionable
+per-criterion questions) is embedded too — collapsible in `report.html`, a
+`## Manual-review checklist` section in `report.md` / `report.txt` — in
+addition to the standalone `manual-checklist.md` working document.
 
 The **reading view** (linearized accessible-name walk, a screen-reader /
 text-only review aid) is embedded inside each report format — a collapsible

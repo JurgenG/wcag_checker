@@ -41,11 +41,16 @@ tasks, never pass/fail results.
 
 from __future__ import annotations
 
+import html
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 
 from .core import CRITERIA_REGISTRY, WcagCriterion
+
+#: Section title used when the checklist is embedded in an audit report,
+#: shared across the Markdown / text / HTML renderings.
+SECTION_HEADING = "Manual-review checklist"
 
 #: The conformance target: WCAG 2.2 levels A and AA (AAA is out of scope).
 _IN_SCOPE_LEVELS = frozenset({"A", "AA"})
@@ -94,8 +99,8 @@ QUESTIONS: dict[str, tuple[str, ...]] = {
         "Is a synchronized audio description track provided for visual information the soundtrack does not convey?",
     ),
     "1.3.2": (
-        "Linearize the page (disable CSS): does the content still read in a meaningful order?",
-        "Does the DOM order match the intended reading order assistive tech would follow?",
+        "Read the report's Reading view section (the page linearized in DOM/source order): does the content still read in a meaningful order there?",
+        "Does that source order match the intended reading order assistive tech would follow, or does CSS visually reorder content away from it?",
     ),
     "1.3.3": (
         "Do any instructions rely only on shape, size, or position (e.g. 'the round button', 'the box on the right')?",
@@ -359,6 +364,91 @@ def render_markdown(checklist: ManualChecklist) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _intro_line(checklist: ManualChecklist) -> str:
+    """One-line tally of how many criteria across how many pages remain."""
+    manual, partial = _tier_counts(checklist.criteria)
+    return (
+        f"{len(checklist.criteria)} criteria still need a human "
+        f"({manual} manual, {partial} partial) across "
+        f"{len(checklist.urls)} page(s)."
+    )
+
+
+def render_markdown_section(checklist: ManualChecklist) -> str:
+    """Render the checklist as an embeddable ``## Manual-review checklist``.
+
+    Same content as :func:`render_markdown` but shifted one heading level
+    down (so it nests under a report's ``#`` title) and without the
+    standalone document title, for embedding in an audit report. Pure.
+    """
+    lines = [f"## {SECTION_HEADING}", "", NOTE, "", _intro_line(checklist), ""]
+    if not checklist.urls:
+        lines.append("_No pages were recorded to review._")
+        return "\n".join(lines).rstrip() + "\n"
+    for url in checklist.urls:
+        lines.append(f"### {url}")
+        lines.append("")
+        for crit in checklist.criteria:
+            lines.append(
+                f"#### {crit.id} {crit.name} ({crit.level} · {crit.automatable})"
+            )
+            lines.extend(f"- [ ] {q}" for q in questions_for(crit.id))
+            lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_text_section(checklist: ManualChecklist) -> str:
+    """Render the checklist as a plain-text report section. Pure."""
+    lines = [SECTION_HEADING, "-" * len(SECTION_HEADING), "", _intro_line(checklist), ""]
+    if not checklist.urls:
+        lines.append("(no pages were recorded to review)")
+        return "\n".join(lines).rstrip() + "\n"
+    for url in checklist.urls:
+        lines.append(url)
+        for crit in checklist.criteria:
+            lines.append(f"  {crit.id} {crit.name} ({crit.level} · {crit.automatable})")
+            lines.extend(f"    [ ] {q}" for q in questions_for(crit.id))
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_html_section(checklist: ManualChecklist) -> str:
+    """Render the checklist as an HTML fragment for the report body.
+
+    Each audited page is a collapsed ``<details>`` holding its criteria and
+    tickable checkboxes, so the (long) checklist never dominates the report
+    until expanded. Every value is HTML-escaped. Pure.
+    """
+    parts = [
+        f"<h2>{html.escape(SECTION_HEADING)}</h2>",
+        f"<p class='mc-note'>{html.escape(NOTE)}</p>",
+        f"<p>{html.escape(_intro_line(checklist))}</p>",
+    ]
+    if not checklist.urls:
+        parts.append("<p><em>No pages were recorded to review.</em></p>")
+        return "".join(parts)
+    for url in checklist.urls:
+        rows: list[str] = []
+        for crit in checklist.criteria:
+            items = "".join(
+                "<li><label><input type='checkbox'> "
+                f"{html.escape(q)}</label></li>"
+                for q in questions_for(crit.id)
+            )
+            rows.append(
+                f"<div class='mc-crit'><strong>{html.escape(crit.id)} "
+                f"{html.escape(crit.name)}</strong> "
+                f"<span class='tag'>{html.escape(crit.level)} · "
+                f"{html.escape(crit.automatable)}</span>"
+                f"<ul class='mc-list'>{items}</ul></div>"
+            )
+        parts.append(
+            f"<details class='mc'><summary>{html.escape(url)} — "
+            f"{len(checklist.criteria)} criteria</summary>{''.join(rows)}</details>"
+        )
+    return "".join(parts)
+
+
 def render_json(checklist: ManualChecklist) -> str:
     """Render the checklist as a machine-readable JSON string.
 
@@ -387,8 +477,12 @@ __all__ = [
     "ManualChecklist",
     "NOTE",
     "QUESTIONS",
+    "SECTION_HEADING",
     "build_checklist",
     "questions_for",
+    "render_html_section",
     "render_json",
     "render_markdown",
+    "render_markdown_section",
+    "render_text_section",
 ]
