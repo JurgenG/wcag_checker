@@ -105,6 +105,14 @@ WCAG criterion:
   - 2.4.3 — positive `tabindex` overriding focus order
   - 2.5.8 — targets smaller than 24×24 CSS px
 
+Alongside the findings, every audited page is also captured as a
+**linearized reading view** (`text-view.md`) — the accessible-name tree
+walked in source order, the way a screen reader or text-only browser
+broadly reads down the page, flagging elements with no accessible name.
+It is a manual-review aid, not a pass/fail check: it cannot judge whether
+names are *meaningful* or whether the order matches the visual layout, so
+those stay a human's call.
+
 ## Output
 
 Written to the output directory (`--out`, default `reports/`). `--format`
@@ -125,6 +133,7 @@ Always written, regardless of `--format`:
 | File | Contents |
 | --- | --- |
 | `manual-checklist.md` | Review checklist: the 46 A + AA criteria tooling cannot decide, each with step-by-step questions, per audited page. |
+| `text-view.md` | Linearized reading view: the page walked in DOM source order with a simplified accessible name for each heading, link, button, image, form field and landmark — a screen-reader/text-only reading aid that flags elements with no accessible name. A review aid, **not** a screen-reader test or a pass/fail check. |
 | `screenshots/` | One PNG per flagged element (one shot per element, reused across criteria). Findings reference these by relative path. |
 
 Examples: `--format json`, `--format html,jira-tickets`, `--format all`.

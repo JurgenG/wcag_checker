@@ -40,6 +40,7 @@ smoke-tested.
 from __future__ import annotations
 
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -49,12 +50,23 @@ from selenium.common.exceptions import WebDriverException
 
 from .capture.driver import launch_driver
 from .capture.hotkey import DEFAULT_HOTKEY, HotkeyWatcher
-from .wcag import axe_runner, keyboard_nav, manual_checklist, reporter, screenshot
+from .wcag import (
+    axe_runner,
+    keyboard_nav,
+    manual_checklist,
+    reporter,
+    screenshot,
+    text_view,
+)
 from .wcag.core import Finding
+from .wcag.text_view import PageTextView
 
 #: Subdirectory of the output directory that per-finding element
 #: screenshots are written to.
 SCREENSHOT_DIRNAME = "screenshots"
+
+#: Filename of the linearized reading-view manual-review aid.
+TEXT_VIEW_FILENAME = "text-view.md"
 
 #: How often (seconds) the main loop polls for a closed window / pending
 #: audit request when idle.
@@ -145,6 +157,21 @@ def audit_page(
     return findings
 
 
+def capture_text_view(driver: Any, url: str) -> PageTextView | None:
+    """Extract the page's linearized reading view, or ``None`` on failure.
+
+    Thin resilient wrapper over :func:`.text_view.extract`: the reading
+    view is a manual-review aid, so a page whose DOM walk cannot run (the
+    context went away, the script was blocked) must not fail the audit —
+    it simply yields no reading view for that page. Impure (reads the live
+    DOM via one ``execute_script``).
+    """
+    try:
+        return text_view.extract(driver, url)
+    except WebDriverException:
+        return None
+
+
 def run_session(
     target_url: str,
     output_dir: Path | str,
@@ -172,6 +199,17 @@ def run_session(
     findings: list[Finding] = []
     audited_urls: list[str] = []
     screenshot_dir = Path(output_dir) / SCREENSHOT_DIRNAME
+    text_views: list[PageTextView] = []
+    seen_view_urls: set[str] = set()
+
+    def _audit(d: Any, u: str) -> list[Finding]:
+        page_findings = audit_page(d, u, screenshot_dir)
+        if u and u not in seen_view_urls:
+            seen_view_urls.add(u)
+            view = capture_text_view(d, u)
+            if view is not None:
+                text_views.append(view)
+        return page_findings
 
     with launch_driver(headless=headless, width=width) as launched:
         driver = launched.driver
@@ -180,14 +218,19 @@ def run_session(
         findings, audited_urls = _run_audit_loop(
             driver,
             poll_interval=poll_interval,
-            audit_fn=lambda d, u: audit_page(d, u, screenshot_dir),
+            audit_fn=_audit,
             poll_fn=watcher.poll,
             on_audit=on_audit,
         )
 
     generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     written = write_reports(
-        output_dir, findings, audited_urls, generated_at=generated_at, formats=formats
+        output_dir,
+        findings,
+        audited_urls,
+        generated_at=generated_at,
+        formats=formats,
+        text_views=text_views,
     )
     return SessionResult(
         audited_urls=tuple(audited_urls),
@@ -226,10 +269,16 @@ def run_once(
         driver.get(target_url)
         audited_url = wait_until_settled(driver)
         findings = audit_page(driver, audited_url, screenshot_dir)
+        view = capture_text_view(driver, audited_url)
 
     generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     written = write_reports(
-        output_dir, findings, [audited_url], generated_at=generated_at, formats=formats
+        output_dir,
+        findings,
+        [audited_url],
+        generated_at=generated_at,
+        formats=formats,
+        text_views=[view] if view is not None else [],
     )
     return SessionResult(
         audited_urls=(audited_url,),
@@ -325,6 +374,7 @@ def write_reports(
     generated_at: str | None = None,
     formats: tuple[str, ...] = DEFAULT_FORMATS,
     title: str | None = None,
+    text_views: Sequence[PageTextView] = (),
 ) -> dict[str, Path]:
     """Render and write the selected report ``formats`` to ``output_dir``.
 
@@ -335,8 +385,10 @@ def write_reports(
     heading (e.g. a municipality name from a 2-column list). The
     manual-review checklist (``manual-checklist.md``) is always written —
     it is the essential human-review artifact, not an alternate rendering
-    of the findings. Creates ``output_dir`` if needed and returns a
-    name→path map. Pure output seam — no driver, no network.
+    of the findings. When ``text_views`` is non-empty, the linearized
+    reading-view aid (``text-view.md``, see :mod:`.wcag.text_view`) is
+    written too. Creates ``output_dir`` if needed and returns a name→path
+    map. Pure output seam — no driver, no network.
     """
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -368,6 +420,14 @@ def write_reports(
         manual_checklist.render_markdown(checklist), encoding="utf-8"
     )
     written["manual-checklist.md"] = checklist_path
+
+    if text_views:
+        text_view_path = out / TEXT_VIEW_FILENAME
+        text_view_path.write_text(
+            text_view.render_markdown(list(text_views), generated_at=generated_at),
+            encoding="utf-8",
+        )
+        written[TEXT_VIEW_FILENAME] = text_view_path
     return written
 
 
@@ -392,8 +452,10 @@ __all__ = [
     "DEFAULT_POLL_INTERVAL",
     "FORMAT_CHOICES",
     "SCREENSHOT_DIRNAME",
+    "TEXT_VIEW_FILENAME",
     "SessionResult",
     "audit_page",
+    "capture_text_view",
     "parse_formats",
     "run_once",
     "run_session",

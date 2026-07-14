@@ -52,6 +52,7 @@ from .session import (
     DEFAULT_FORMATS,
     SCREENSHOT_DIRNAME,
     audit_page,
+    capture_text_view,
     wait_until_settled,
     write_reports,
 )
@@ -215,6 +216,7 @@ def _audit_site(
         driver.get(url)
         audited_url = wait_until_settled(driver)
         findings = audit_page(driver, audited_url, site_dir / SCREENSHOT_DIRNAME)
+        view = capture_text_view(driver, audited_url)
         write_reports(
             site_dir,
             findings,
@@ -222,6 +224,7 @@ def _audit_site(
             generated_at=generated_at,
             formats=formats,
             title=name,
+            text_views=[view] if view is not None else [],
         )
         sev = reporter.build_report(findings, urls=[audited_url]).summary
         return SiteResult(

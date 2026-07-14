@@ -128,6 +128,7 @@ class TestRunBatch:
             lambda *, headless=False, width=None: _FakeDriverCM(_FakeDriver()),
         )
         monkeypatch.setattr(batch, "wait_until_settled", lambda driver: driver.last)
+        monkeypatch.setattr(batch, "capture_text_view", lambda driver, url: None)
 
         def fake_audit(driver, url, screenshot_dir):
             if "boom" in url:
@@ -176,6 +177,7 @@ class TestRunBatch:
             lambda *, headless=False, width=None: _FakeDriverCM(_FakeDriver()),
         )
         monkeypatch.setattr(batch, "wait_until_settled", lambda driver: driver.last)
+        monkeypatch.setattr(batch, "capture_text_view", lambda driver, url: None)
 
         def multiline_audit(driver, url, screenshot_dir):
             raise RuntimeError("first line\nstack frame 1\nstack frame 2")
@@ -198,6 +200,19 @@ class TestRunBatch:
         assert "Aalst" in (tmp_path / "aalst.be" / "report.html").read_text(
             encoding="utf-8"
         )
+
+    def test_reading_view_written_per_site_when_captured(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        from leak_inspector.wcag.text_view import PageTextView, TextNode
+
+        self._patch(monkeypatch)
+        view = PageTextView(
+            url="x", title="T", nodes=(TextNode(role="heading", name="Hi", level=1),)
+        )
+        monkeypatch.setattr(batch, "capture_text_view", lambda driver, url: view)
+        run_batch(_urls("https://a.be"), tmp_path)
+        assert (tmp_path / "a.be" / "text-view.md").exists()
 
     def test_limit_caps_the_number_audited(self, monkeypatch, tmp_path) -> None:
         self._patch(monkeypatch)

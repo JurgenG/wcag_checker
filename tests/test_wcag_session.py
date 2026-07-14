@@ -227,6 +227,25 @@ class TestWriteReports:
             assert written[key].parent == tmp_path / "jira"
             assert written[key].read_text(encoding="utf-8").startswith("# [P")
 
+    def test_text_view_written_only_when_views_given(self, tmp_path) -> None:
+        from leak_inspector.wcag.text_view import PageTextView, TextNode
+
+        # No views → no text-view.md (the default write set is unchanged).
+        written = write_reports(tmp_path / "a", [], ["https://x/a"])
+        assert "text-view.md" not in written
+
+        # Views given → text-view.md is written alongside the report.
+        view = PageTextView(
+            url="https://x/a",
+            title="Home",
+            nodes=(TextNode(role="link", name="About"),),
+        )
+        written = write_reports(
+            tmp_path / "b", [], ["https://x/a"], text_views=[view]
+        )
+        assert "text-view.md" in written
+        assert "About" in written["text-view.md"].read_text(encoding="utf-8")
+
     def test_checklist_lists_the_route(self, tmp_path) -> None:
         written = write_reports(tmp_path, [], ["https://x/a"], generated_at="T")
         md = written["manual-checklist.md"].read_text(encoding="utf-8")

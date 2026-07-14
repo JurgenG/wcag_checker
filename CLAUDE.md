@@ -53,6 +53,10 @@ review" is always better than a false pass.
     The highest-value custom code.
   - `manual_checklist.py` — generates the human-review checklist for the
     majority of criteria that cannot be asserted automatically.
+  - `text_view.py` — produces an approximate *linearized reading view* of
+    the live page (accessible-name tree walked in source order), written
+    as a manual-review aid. Takes a live driver like `axe_runner`; makes
+    no pass/fail claim (a reading aid, not a screen-reader test).
   - `reporter.py` — merges findings grouped by WCAG criterion and renders
     JSON (canonical) + text + Markdown + HTML, always with a coverage
     summary. Pure: findings in, strings out.
