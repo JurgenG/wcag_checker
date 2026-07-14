@@ -227,24 +227,32 @@ class TestWriteReports:
             assert written[key].parent == tmp_path / "jira"
             assert written[key].read_text(encoding="utf-8").startswith("# [P")
 
-    def test_text_view_written_only_when_views_given(self, tmp_path) -> None:
+    def test_reading_view_embedded_in_report_when_views_given(self, tmp_path) -> None:
         from leak_inspector.wcag.text_view import PageTextView, TextNode
 
-        # No views → no text-view.md (the default write set is unchanged).
+        # No views → no separate file and no reading-view section.
         written = write_reports(tmp_path / "a", [], ["https://x/a"])
         assert "text-view.md" not in written
+        assert "Reading view" not in written["report.html"].read_text(
+            encoding="utf-8"
+        )
 
-        # Views given → text-view.md is written alongside the report.
+        # Views given → the reading view is embedded in the report itself,
+        # not written as a separate file.
         view = PageTextView(
             url="https://x/a",
             title="Home",
             nodes=(TextNode(role="link", name="About"),),
         )
         written = write_reports(
-            tmp_path / "b", [], ["https://x/a"], text_views=[view]
+            tmp_path / "b", [], ["https://x/a"], formats=("html", "md"),
+            text_views=[view],
         )
-        assert "text-view.md" in written
-        assert "About" in written["text-view.md"].read_text(encoding="utf-8")
+        assert "text-view.md" not in written
+        html = written["report.html"].read_text(encoding="utf-8")
+        assert "Reading view (manual-review aid)" in html
+        assert "About" in html
+        assert "Reading view" in written["report.md"].read_text(encoding="utf-8")
 
     def test_checklist_lists_the_route(self, tmp_path) -> None:
         written = write_reports(tmp_path, [], ["https://x/a"], generated_at="T")

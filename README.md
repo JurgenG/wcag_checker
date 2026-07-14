@@ -105,13 +105,13 @@ WCAG criterion:
   - 2.4.3 — positive `tabindex` overriding focus order
   - 2.5.8 — targets smaller than 24×24 CSS px
 
-Alongside the findings, every audited page is also captured as a
-**linearized reading view** (`text-view.md`) — the accessible-name tree
-walked in source order, the way a screen reader or text-only browser
-broadly reads down the page, flagging elements with no accessible name.
-It is a manual-review aid, not a pass/fail check: it cannot judge whether
-names are *meaningful* or whether the order matches the visual layout, so
-those stay a human's call.
+Alongside the findings, every report embeds a **linearized reading view**
+(a *Reading view* section) — the accessible-name tree walked in source
+order, the way a screen reader or text-only browser broadly reads down the
+page, flagging elements with no accessible name. It is a manual-review
+aid, not a pass/fail check: it cannot judge whether names are *meaningful*
+or whether the order matches the visual layout, so those stay a human's
+call.
 
 ## Output
 
@@ -121,10 +121,10 @@ selects which findings report(s) to write (comma-separated; default
 
 | `--format` | Output | Contents |
 | --- | --- | --- |
-| `html` *(default)* | `report.html` | HTML report (inline styling); findings grouped by criterion, each with a screenshot thumbnail. |
+| `html` *(default)* | `report.html` | HTML report (inline styling); findings grouped by criterion, each with a screenshot thumbnail, plus the collapsible reading-view section. |
 | `md` | `report.md` | Markdown report. |
 | `txt` | `report.txt` | Plain-text report. |
-| `json` | `results.json` | Machine-readable result: each finding (criterion id, severity, message, selector, screenshot path) plus the coverage summary. |
+| `json` | `results.json` | Machine-readable result: each finding (criterion id, severity, message, selector, screenshot path), the coverage summary, and the reading view (`reading_view`). |
 | `jira-tickets` | `jira/*.md` | One JIRA-style Markdown ticket per issue type (WCAG criterion): fields, affected elements, acceptance criteria. |
 | `all` | all of the above | |
 
@@ -133,8 +133,14 @@ Always written, regardless of `--format`:
 | File | Contents |
 | --- | --- |
 | `manual-checklist.md` | Review checklist: the 46 A + AA criteria tooling cannot decide, each with step-by-step questions, per audited page. |
-| `text-view.md` | Linearized reading view: the page walked in DOM source order with a simplified accessible name for each heading, link, button, image, form field and landmark — a screen-reader/text-only reading aid that flags elements with no accessible name. A review aid, **not** a screen-reader test or a pass/fail check. |
 | `screenshots/` | One PNG per flagged element (one shot per element, reused across criteria). Findings reference these by relative path. |
+
+The **reading view** (linearized accessible-name walk, a screen-reader /
+text-only review aid) is embedded inside each report format — a collapsible
+section in `report.html`, a `## Reading view` section in `report.md` /
+`report.txt`, and a `reading_view` array in `results.json` — rather than a
+separate file. It is a review aid, **not** a screen-reader test or a
+pass/fail check.
 
 Examples: `--format json`, `--format html,jira-tickets`, `--format all`.
 

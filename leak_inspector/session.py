@@ -65,9 +65,6 @@ from .wcag.text_view import PageTextView
 #: screenshots are written to.
 SCREENSHOT_DIRNAME = "screenshots"
 
-#: Filename of the linearized reading-view manual-review aid.
-TEXT_VIEW_FILENAME = "text-view.md"
-
 #: How often (seconds) the main loop polls for a closed window / pending
 #: audit request when idle.
 DEFAULT_POLL_INTERVAL = 0.5
@@ -385,16 +382,20 @@ def write_reports(
     heading (e.g. a municipality name from a 2-column list). The
     manual-review checklist (``manual-checklist.md``) is always written —
     it is the essential human-review artifact, not an alternate rendering
-    of the findings. When ``text_views`` is non-empty, the linearized
-    reading-view aid (``text-view.md``, see :mod:`.wcag.text_view`) is
-    written too. Creates ``output_dir`` if needed and returns a name→path
-    map. Pure output seam — no driver, no network.
+    of the findings. ``text_views`` (the per-page linearized reading views,
+    see :mod:`.wcag.text_view`) are embedded into every written report as a
+    *Reading view* section. Creates ``output_dir`` if needed and returns a
+    name→path map. Pure output seam — no driver, no network.
     """
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
     document = reporter.build_report(
-        findings, urls=urls, generated_at=generated_at, title=title
+        findings,
+        urls=urls,
+        generated_at=generated_at,
+        title=title,
+        text_views=text_views,
     )
     written: dict[str, Path] = {}
 
@@ -420,14 +421,6 @@ def write_reports(
         manual_checklist.render_markdown(checklist), encoding="utf-8"
     )
     written["manual-checklist.md"] = checklist_path
-
-    if text_views:
-        text_view_path = out / TEXT_VIEW_FILENAME
-        text_view_path.write_text(
-            text_view.render_markdown(list(text_views), generated_at=generated_at),
-            encoding="utf-8",
-        )
-        written[TEXT_VIEW_FILENAME] = text_view_path
     return written
 
 
@@ -452,7 +445,6 @@ __all__ = [
     "DEFAULT_POLL_INTERVAL",
     "FORMAT_CHOICES",
     "SCREENSHOT_DIRNAME",
-    "TEXT_VIEW_FILENAME",
     "SessionResult",
     "audit_page",
     "capture_text_view",

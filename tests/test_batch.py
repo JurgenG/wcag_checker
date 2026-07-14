@@ -201,18 +201,23 @@ class TestRunBatch:
             encoding="utf-8"
         )
 
-    def test_reading_view_written_per_site_when_captured(
+    def test_reading_view_embedded_in_site_report_when_captured(
         self, monkeypatch, tmp_path
     ) -> None:
         from leak_inspector.wcag.text_view import PageTextView, TextNode
 
         self._patch(monkeypatch)
         view = PageTextView(
-            url="x", title="T", nodes=(TextNode(role="heading", name="Hi", level=1),)
+            url="x", title="T",
+            nodes=(TextNode(role="heading", name="Hello", level=1),),
         )
         monkeypatch.setattr(batch, "capture_text_view", lambda driver, url: view)
         run_batch(_urls("https://a.be"), tmp_path)
-        assert (tmp_path / "a.be" / "text-view.md").exists()
+        # No separate file — the reading view is part of the site report.
+        assert not (tmp_path / "a.be" / "text-view.md").exists()
+        html = (tmp_path / "a.be" / "report.html").read_text(encoding="utf-8")
+        assert "Reading view (manual-review aid)" in html
+        assert "Hello" in html
 
     def test_limit_caps_the_number_audited(self, monkeypatch, tmp_path) -> None:
         self._patch(monkeypatch)

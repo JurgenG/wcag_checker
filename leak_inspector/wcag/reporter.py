@@ -18,9 +18,10 @@
 """Merge findings by WCAG criterion and render them in four formats.
 
 Pure module: it consumes :class:`~.core.Finding` lists plus the criteria
-registry and returns strings. It never touches the network, the driver,
-or the filesystem — the CLI/session layer decides where to write the
-output.
+registry (and the optional per-page reading views from :mod:`.text_view`,
+embedded as a *Reading view* section) and returns strings. It never
+touches the network, the driver, or the filesystem — the CLI/session
+layer decides where to write the output.
 
 The flow is build-once, render-many. :func:`build_report` folds the flat
 finding list into a :class:`ReportDocument` (findings grouped by
@@ -44,7 +45,9 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
+from . import text_view
 from .core import CRITERIA_REGISTRY, Finding, WcagCriterion, criterion
+from .text_view import PageTextView
 
 #: Per-criterion outcome derived from its findings. A criterion only
 #: appears in a report when it has findings, so these are the only two
@@ -164,12 +167,16 @@ class ReportDocument:
     ``generated_at`` an optional caller-supplied timestamp (this module
     never reads the clock, to stay pure and deterministic), and ``title``
     an optional site label shown in the heading (e.g. a municipality name).
+    ``text_views`` holds the per-page linearized reading views (see
+    :mod:`.text_view`), rendered into every format as a *Reading view*
+    manual-review section; empty when none were captured.
     """
 
     summary: CoverageSummary
     criteria: tuple[CriterionReport, ...]
     generated_at: str | None
     title: str | None = None
+    text_views: tuple[PageTextView, ...] = ()
 
 
 def build_report(
@@ -178,6 +185,7 @@ def build_report(
     urls: Sequence[str] | None = None,
     generated_at: str | None = None,
     title: str | None = None,
+    text_views: Sequence[PageTextView] = (),
 ) -> ReportDocument:
     """Fold a flat finding list into a grouped, summarized report.
 
@@ -187,6 +195,8 @@ def build_report(
     the full set of pages audited, so a page that produced no finding is
     still recorded; when omitted it is inferred from the findings.
     ``generated_at`` is passed straight through to the renderers.
+    ``text_views`` are the per-page reading views embedded as the report's
+    *Reading view* section.
     """
     grouped: dict[str, list[Finding]] = {}
     for finding in findings:
@@ -217,6 +227,7 @@ def build_report(
         criteria=tuple(criteria),
         generated_at=generated_at,
         title=title,
+        text_views=tuple(text_views),
     )
 
 
@@ -335,6 +346,7 @@ def render_json(document: ReportDocument) -> str:
             }
             for report in document.criteria
         ],
+        "reading_view": text_view.reading_view_payload(document.text_views),
     }
     return json.dumps(payload, indent=2, ensure_ascii=False)
 
@@ -387,6 +399,10 @@ def render_text(document: ReportDocument) -> str:
             if finding.screenshot:
                 lines.append(f"      evidence: {finding.screenshot}")
         lines.append("")
+
+    reading = text_view.render_text_section(document.text_views)
+    if reading:
+        lines += ["", reading.rstrip()]
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -472,6 +488,10 @@ def render_markdown(document: ReportDocument) -> str:
                     f"{finding.message} ({finding.url}){evidence}"
                 )
             lines.append("")
+
+    reading = text_view.render_markdown_section(document.text_views)
+    if reading:
+        lines += ["", reading.rstrip()]
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -596,6 +616,7 @@ def render_html(document: ReportDocument) -> str:
         disclaimer=html.escape(DISCLAIMER),
         triage=triage,
         sections="".join(sections),
+        reading_view=text_view.render_html_section(document.text_views),
     )
 
 
@@ -641,6 +662,18 @@ img.evidence {{ max-width: 360px; max-height: 480px; border: 1px solid #ccc;
 .sev-error td:first-child {{ color: #842029; font-weight: bold; }}
 .sev-warning td:first-child {{ color: #664d03; font-weight: bold; }}
 .sev-needs-review td:first-child {{ color: #055160; }}
+.rv-note {{ color: #555; font-size: 0.85rem; margin: 0.5rem 0 1rem; }}
+details.rv {{ border: 1px solid #ddd; border-radius: 4px; margin: 0.5rem 0;
+  padding: 0.4rem 0.75rem; }}
+details.rv summary {{ cursor: pointer; font-weight: 600; }}
+.rv-url {{ color: #667; font-size: 0.85rem; margin: 0.3rem 0; }}
+ul.rv-list {{ list-style: none; margin: 0.5rem 0; padding-left: 0.5rem;
+  font-size: 0.88rem; }}
+ul.rv-list li {{ padding: 0.05rem 0; }}
+ul.rv-list li.rv-text {{ color: #333; }}
+ul.rv-list li.rv-heading {{ margin-top: 0.3rem; }}
+ul.rv-list li.rv-warn {{ color: #842029; }}
+ul.rv-list code {{ background: #f4f4f4; padding: 0 0.2rem; border-radius: 2px; }}
 </style>
 </head>
 <body>
@@ -665,6 +698,7 @@ img.evidence {{ max-width: 360px; max-height: 480px; border: 1px solid #ccc;
 {triage}
 <h2>Findings</h2>
 {sections}
+{reading_view}
 </body>
 </html>
 """
