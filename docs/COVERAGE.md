@@ -14,7 +14,7 @@ importantly — how much it cannot.
 
 ## The three tiers
 
-Every one of the 87 WCAG 2.2 success criteria is tagged with exactly one
+Every one of the 86 WCAG 2.2 success criteria is tagged with exactly one
 automatability tier:
 
 | Tier | Meaning | What the tool emits |
@@ -33,10 +33,10 @@ Derived from the registry (`CRITERIA_REGISTRY` in `core.py`):
 
 | Tier | Count | Share |
 |--- |--- |--- |
-| full | 11 | ~13% |
-| partial | 21 | ~24% |
-| manual | 55 | ~63% |
-| **total** | **87** | 100% |
+| full | 10 | ~12% |
+| partial | 24 | ~28% |
+| manual | 52 | ~60% |
+| **total** | **86** | 100% |
 
 This is broadly consistent with the widely-cited industry estimate that
 roughly 30% of WCAG is fully automatable, ~10% partially, and ~60%
@@ -45,7 +45,7 @@ only claims `full` where the engine genuinely decides the criterion.
 
 ## Where the coverage comes from
 
-Three sources produce findings; everything else is checklist-only.
+Five engines produce findings; everything else is checklist-only.
 
 ### axe-core (via `axe_runner.py`)
 
@@ -61,9 +61,20 @@ things like:
 - **1.4.3 / 1.4.6 Contrast** — text colour-contrast ratios.
 - **1.3.4 Orientation**, **1.3.5 Identify Input Purpose**
   (autocomplete validity), **2.4.1 Bypass Blocks**, **2.4.2 Page
-  Titled**, **3.1.1 Language of Page**.
-- **4.1.1 Parsing** (duplicate ids), **4.1.2 Name, Role, Value** — ARIA
-  attribute/role validity, accessible names for controls.
+  Titled**, **3.1.1 Language of Page**, **3.1.2 Language of Parts**.
+- **4.1.2 Name, Role, Value** — ARIA attribute/role validity, accessible
+  names for controls.
+- Media/timing candidates: **1.2.2 Captions** (`video-caption`),
+  **1.4.2 Audio Control** (`no-autoplay-audio`), **2.2.1 Timing
+  Adjustable** (`meta-refresh`), **2.2.2 Pause/Stop/Hide**
+  (`marquee`/`blink`).
+- **2.5.3 Label in Name** — axe's experimental
+  `label-content-name-mismatch` rule is enabled explicitly and its
+  results reported `needs-review`.
+
+(**4.1.1 Parsing** was **removed in WCAG 2.2** — obsolete and always
+satisfied — so it is not in the registry and not audited; axe's old
+`duplicate-id` rule that mapped to it is deprecated and does not run.)
 
 axe-core also returns *incomplete* results — checks it could not fully
 decide. Those are surfaced as `needs-review` findings, not passes.
@@ -85,6 +96,26 @@ for the automatable slice of:
 These are `partial`: they catch concrete defects but cannot certify the
 criterion (e.g. a logical-but-unusual focus order can be correct).
 
+### Media presence (via `media.py`)
+
+Fills the prerecorded-media criteria axe does not decide, both
+`needs-review`: **1.2.1** (a native `<audio>` is present → confirm a
+transcript) and **1.2.3** (a native `<video>` is present → confirm an
+audio description or text alternative). Blind to cross-origin `<iframe>`
+embeds (YouTube/Vimeo), which stay manual.
+
+### Descriptive-text heuristics (via `content.py`)
+
+**2.4.4 Link Purpose** — links whose text is a generic filler phrase
+("click here", "read more", …); and **2.4.6 Headings and Labels** —
+headings with no text content. Both `needs-review`.
+
+### Reflow (via `reflow.py`)
+
+**1.4.10 Reflow** — sets a true 320 CSS-px viewport via WebDriver BiDi
+(then restores it) and flags horizontal scrolling as a `needs-review`
+candidate.
+
 ### The manual checklist (via `manual_checklist.py`)
 
 The `manual`-tier majority — and the human-confirmation half of every
@@ -93,9 +124,11 @@ pages that were audited. These are criteria no tool should pretend to
 decide, including:
 
 - Meaningful (vs merely present) alt text and link text in context.
-- Media alternatives: captions, audio description, transcripts
-  (1.2.x).
-- Error-message quality and prevention (3.3.1–3.3.4).
+- Whether a media alternative actually exists and is adequate — the
+  presence checks (1.2.1–1.2.3) only flag that media is there; live
+  captions (1.2.4) and audio description (1.2.5) stay fully manual.
+- Error-message quality and prevention (3.3.1–3.3.4), status messages
+  (4.1.3).
 - Plain language / reading level (3.1.5) and other cognitive criteria.
 - Sensory characteristics (1.3.3), use of colour intent (1.4.1),
   content on hover/focus (1.4.13).
@@ -109,14 +142,14 @@ The complete per-criterion tier list is the `CRITERIA_REGISTRY` tuple in
 [`core.py`](../leak_inspector/wcag/core.py). For reference, the
 non-`manual` criteria are:
 
-**full (11):** 1.1.1, 1.3.1, 1.3.4, 1.3.5, 1.4.3, 1.4.6, 2.4.1, 2.4.2,
-3.1.1, 4.1.1, 4.1.2
+**full (10):** 1.1.1, 1.3.1, 1.3.4, 1.3.5, 1.4.3, 1.4.6, 2.4.1, 2.4.2,
+3.1.1, 4.1.2
 
-**partial (21):** 1.3.2, 1.4.1, 1.4.4, 1.4.10, 1.4.11, 1.4.12, 2.1.2,
-2.2.1, 2.2.2, 2.4.3, 2.4.4, 2.4.6, 2.4.7, 2.4.9, 2.4.11, 2.5.3, 2.5.5,
-2.5.8, 3.1.2, 3.3.2, 4.1.3
+**partial (24):** 1.2.1, 1.2.2, 1.2.3, 1.3.2, 1.4.1, 1.4.2, 1.4.4,
+1.4.10, 1.4.11, 1.4.12, 2.1.2, 2.2.1, 2.2.2, 2.4.3, 2.4.4, 2.4.6, 2.4.7,
+2.4.9, 2.4.11, 2.5.3, 2.5.5, 2.5.8, 3.1.2, 3.3.2
 
-Every remaining criterion (**55**) is `manual`.
+Every remaining criterion (**52**) is `manual`.
 
 ## The bottom line
 

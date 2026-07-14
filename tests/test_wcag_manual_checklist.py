@@ -54,14 +54,15 @@ class TestBuildChecklist:
         assert "1.1.1" not in ids  # also full
 
     def test_expected_counts(self) -> None:
-        # A + AA review scope: 23 manual + 23 partial = 46. (1.2.1/1.2.2/
+        # A + AA review scope: 24 manual + 22 partial = 46. (1.2.1/1.2.2/
         # 1.2.3/1.4.2 moved manual→partial once media + axe gave them
-        # automated candidate coverage; the total review set is unchanged.)
+        # automated candidate coverage; 4.1.3 moved partial→manual as it
+        # has no reliable detector. The total review set is unchanged.)
         criteria = build_checklist(URLS).criteria
         manual = [c for c in criteria if c.automatable == "manual"]
         partial = [c for c in criteria if c.automatable == "partial"]
-        assert len(manual) == 23
-        assert len(partial) == 23
+        assert len(manual) == 24
+        assert len(partial) == 22
         assert len(criteria) == 46
 
     def test_known_criteria_present(self) -> None:

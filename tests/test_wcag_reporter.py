@@ -113,8 +113,8 @@ class TestBuildReport:
         tier_total = sum(summary.by_tier.values())
         # Every in-scope criterion falls in exactly one tier bucket.
         assert tier_total == summary.total_in_scope
-        # AAA criteria are excluded, so the scope is well below all 87.
-        assert summary.total_in_scope < 87
+        # AAA criteria are excluded, so the scope is well below all 86.
+        assert summary.total_in_scope < 86
 
     def test_generated_at_passthrough(self, findings: list[Finding]) -> None:
         doc = build_report(findings, generated_at="2026-07-09T10:00:00Z")
@@ -205,12 +205,12 @@ def _fi(criterion, severity, *, impact=None, selector="a", url=URL):
 
 
 class TestPriority:
-    # 4.1.2 = level A, 1.4.3 = AA, 3.3.2 = A, 2.4.7 = AA (per the registry).
+    # 4.1.2 = level A, 1.4.3 = AA, 3.3.2 = A, 2.4.7 = A (per the registry).
     def test_band_from_severity_and_level(self) -> None:
         doc = build_report([
             _fi("1.4.3", "error"),          # AA error  -> P2
             _fi("4.1.2", "error"),          # A  error  -> P1
-            _fi("2.4.7", "needs-review"),   # AA review -> P4
+            _fi("2.4.7", "needs-review"),   # review    -> P4 (level-independent)
             _fi("3.3.2", "warning"),        # A  warning-> P3
         ])
         bands = {r.criterion.id: r.priority.key for r in doc.criteria}

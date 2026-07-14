@@ -45,7 +45,7 @@ order; a clean automated run never implies conformance.
 - [x] `git init` + baseline commit of the untouched fork, then a
       `wcag-conversion` working branch (deletions are recoverable).
 - [x] `wcag/core.py` — `WcagCriterion` + `Finding` dataclasses and the
-      full 87-criterion WCAG 2.2 registry, each tagged with an
+      full 86-criterion WCAG 2.2 registry, each tagged with an
       automatability tier (`full` / `partial` / `manual`). Driver-free.
 - [x] `tests/test_wcag_core.py` — pins the registry (count, unique ids,
       valid levels/tiers, seed-tier anchors, honest tier distribution).

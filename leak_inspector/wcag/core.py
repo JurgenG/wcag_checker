@@ -29,7 +29,7 @@ Two dataclasses:
 * :class:`Finding` — one accessibility issue produced by a check
   (axe-core or a keyboard-navigation probe), addressed to a criterion.
 
-:data:`CRITERIA_REGISTRY` is the authoritative list of all 87 WCAG 2.2
+:data:`CRITERIA_REGISTRY` is the authoritative list of all 86 WCAG 2.2
 success criteria. The ``automatable`` tier on each entry is the single
 source of truth for coverage reporting — downstream code and reports
 label their output from it instead of re-deriving what is and isn't
@@ -123,7 +123,8 @@ class Finding:
 
 # --- WCAG 2.2 success-criteria registry ------------------------------------
 #
-# All 87 WCAG 2.2 success criteria, in specification order. The
+# All 86 WCAG 2.2 success criteria, in specification order (4.1.1 Parsing,
+# removed in 2.2, is intentionally excluded — see below). The
 # ``automatable`` tier on each is the coverage claim this tool stands
 # behind; keep it conservative — when unsure, prefer "manual" over
 # over-claiming "full" (a false green is worse than an honest checklist
@@ -180,7 +181,8 @@ CRITERIA_REGISTRY: tuple[WcagCriterion, ...] = (
     WcagCriterion("2.4.4", "Link Purpose (In Context)", "A", "partial"),
     WcagCriterion("2.4.5", "Multiple Ways", "AA", "manual"),
     WcagCriterion("2.4.6", "Headings and Labels", "AA", "partial"),
-    WcagCriterion("2.4.7", "Focus Visible", "AA", "partial"),
+    # 2.4.7 Focus Visible was promoted from Level AA to Level A in WCAG 2.2.
+    WcagCriterion("2.4.7", "Focus Visible", "A", "partial"),
     WcagCriterion("2.4.8", "Location", "AAA", "manual"),
     WcagCriterion("2.4.9", "Link Purpose (Link Only)", "AAA", "partial"),
     WcagCriterion("2.4.10", "Section Headings", "AAA", "manual"),
@@ -218,14 +220,18 @@ CRITERIA_REGISTRY: tuple[WcagCriterion, ...] = (
     WcagCriterion("3.3.8", "Accessible Authentication (Minimum)", "AA", "manual"),
     WcagCriterion("3.3.9", "Accessible Authentication (Enhanced)", "AAA", "manual"),
     # -- Principle 4: Robust ------------------------------------------------
-    WcagCriterion("4.1.1", "Parsing", "A", "full"),
+    # 4.1.1 Parsing was *removed* in WCAG 2.2 (it is obsolete and always
+    # satisfied on the modern web), so it is deliberately absent here — a
+    # 2.2 audit must not list or score it. axe's ``duplicate-id`` rule that
+    # mapped to it is deprecated / tagged obsolete and does not run.
     WcagCriterion("4.1.2", "Name, Role, Value", "A", "full"),
-    WcagCriterion("4.1.3", "Status Messages", "AA", "partial"),
+    WcagCriterion("4.1.3", "Status Messages", "AA", "manual"),
 )
 
-#: The WCAG 2.2 recommendation defines exactly this many success criteria.
-#: A registry test pins the count so an accidental add/drop is caught.
-WCAG_22_CRITERIA_COUNT = 87
+#: The WCAG 2.2 recommendation defines exactly this many success criteria
+#: (WCAG 2.1's 78 plus 9 added, minus the removed 4.1.1 Parsing). A
+#: registry test pins the count so an accidental add/drop is caught.
+WCAG_22_CRITERIA_COUNT = 86
 
 #: Registry indexed by criterion id for O(1) lookup.
 CRITERIA_BY_ID: dict[str, WcagCriterion] = {c.id: c for c in CRITERIA_REGISTRY}

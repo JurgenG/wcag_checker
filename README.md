@@ -213,10 +213,10 @@ decide (registry: `leak_inspector/wcag/core.py`):
   (e.g. meaningfulness of alt text, error-message quality, plain
   language).
 
-All 87 criteria: 11 full, 21 partial, 55 manual. Level A + AA scope (56
-criteria): 10 full, 19 partial, 27 manual. A criterion with no automated
-finding is not a pass; every criterion needs manual review before a
-conformance claim.
+All 86 criteria: 10 full, 24 partial, 52 manual. Level A + AA scope (55
+criteria): 9 full, 22 partial, 24 manual. (WCAG 2.2 removed 4.1.1 Parsing,
+so it is not counted.) A criterion with no automated finding is not a
+pass; every criterion needs manual review before a conformance claim.
 
 ## Scope / non-goals
 

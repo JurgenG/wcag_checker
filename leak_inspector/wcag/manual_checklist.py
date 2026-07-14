@@ -262,7 +262,7 @@ QUESTIONS: dict[str, tuple[str, ...]] = {
     ),
     "4.1.3": (
         "Do status messages (e.g. 'saved', result counts, form errors) appear without moving keyboard focus?",
-        "Are they exposed via an appropriate role or aria-live region so assistive tech announces them? (cross-check the automated finding)",
+        "Are they exposed via an appropriate role or aria-live region (role=status/alert, aria-live) so assistive tech announces them without a focus change?",
     ),
 }
 
