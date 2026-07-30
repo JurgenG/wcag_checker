@@ -1,21 +1,12 @@
 # Installing wcag-checker
 
-Step-by-step install from a fresh machine. Pick your OS section and follow
-it top to bottom; each step ends in a checkpoint. If a checkpoint fails,
-that step is the one to report.
+Step-by-step install from a fresh machine. Pick your OS section and follow it top to bottom; each step ends in a checkpoint. If a checkpoint fails, that step is the one to report.
 
-wcag-checker opens a visible Firefox, audits a page's rendered state for
-WCAG 2.2 AA issues, and writes reports (JSON, text, Markdown, HTML) plus a
-manual-review checklist and per-finding screenshots. See
-[README.md](README.md) for usage.
+wcag-checker opens a visible Firefox, audits a page's rendered state for WCAG 2.2 AA issues, and writes reports (JSON, text, Markdown, HTML) plus a manual-review checklist and per-finding screenshots. See [README.md](README.md) for usage.
 
-Everything except Python, Git (and Homebrew on macOS) installs into the
-project folder's `.venv/`; deleting the folder removes it. See
-[Uninstalling](#uninstalling).
+Everything except Python, Git (and Homebrew on macOS) installs into the project folder's `.venv/`; deleting the folder removes it. See [Uninstalling](#uninstalling).
 
-The keyboard/focus checks need a real graphical desktop — run it on a
-machine you are sitting at, not a plain SSH session. `--headless` exists
-but those checks are less reliable without a display.
+The keyboard/focus checks need a real graphical desktop — run it on a machine you are sitting at, not a plain SSH session. `--headless` exists but those checks are less reliable without a display.
 
 ---
 
@@ -41,8 +32,7 @@ Checkpoint: Start menu → type `firefox` → Enter opens a Firefox window.
 
 ### 2 — Python
 
-1. <https://www.python.org/downloads/windows/> → "Latest Python 3 Release"
-   (3.12 or newer).
+1. <https://www.python.org/downloads/windows/> → "Latest Python 3 Release" (3.12 or newer).
 2. Download "Windows installer (64-bit)".
 3. Run it. **Tick "Add python.exe to PATH"**, then "Install Now".
 
@@ -52,12 +42,9 @@ Checkpoint: open `cmd` and run:
 python --version
 ```
 
-Expect `Python 3.12` or newer. "not recognized" means the PATH box was
-missed — re-run the installer, choose "Modify", tick the box.
+Expect `Python 3.12` or newer. "not recognized" means the PATH box was missed — re-run the installer, choose "Modify", tick the box.
 
-Use **cmd**, not PowerShell: PowerShell's `>` redirection writes UTF-16 and
-corrupts the reports. This only matters if you redirect with `>`; `--out`
-is unaffected.
+Use **cmd**, not PowerShell: PowerShell's `>` redirection writes UTF-16 and corrupts the reports. This only matters if you redirect with `>`; `--out` is unaffected.
 
 ### 3 — Git
 
@@ -79,8 +66,7 @@ git clone <your-repository-url> wcag-checker
 cd wcag-checker
 ```
 
-Checkpoint: `dir` shows `leak_inspector`, `tests`, `README.md`,
-`pyproject.toml`.
+Checkpoint: `dir` shows `leak_inspector`, `tests`, `README.md`, `pyproject.toml`.
 
 ### 5 — Virtual environment
 
@@ -114,15 +100,13 @@ Continue to [Verify the install worked](#verify-the-install-worked).
 
 ### 1 — Firefox
 
-If not already installed: <https://www.mozilla.org/firefox/new/>, open the
-`.dmg`, drag Firefox into Applications.
+If not already installed: <https://www.mozilla.org/firefox/new/>, open the `.dmg`, drag Firefox into Applications.
 
 Checkpoint: Spotlight (`Cmd+Space`) → `firefox` → Enter opens Firefox.
 
 ### 2 — Command line tools
 
-macOS ships no usable Python by default. Install Apple's command line
-tools:
+macOS ships no usable Python by default. Install Apple's command line tools:
 
 ```bash
 xcode-select --install
@@ -142,8 +126,7 @@ git --version
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 
-Enter your Mac password when prompted (characters don't show). When it
-finishes, run the two `eval` commands it prints under "Next steps", then:
+Enter your Mac password when prompted (characters don't show). When it finishes, run the two `eval` commands it prints under "Next steps", then:
 
 ```bash
 brew install python@3.12
@@ -165,8 +148,7 @@ git clone <your-repository-url> wcag-checker
 cd wcag-checker
 ```
 
-Checkpoint: `ls` shows `leak_inspector`, `tests`, `README.md`,
-`pyproject.toml`.
+Checkpoint: `ls` shows `leak_inspector`, `tests`, `README.md`, `pyproject.toml`.
 
 ### 5 — Virtual environment
 
@@ -195,8 +177,7 @@ Continue to [Verify the install worked](#verify-the-install-worked).
 
 ## Linux
 
-`apt` (Debian / Ubuntu / Mint / Pop!\_OS) and `dnf` (Fedora / Rocky / Alma
-/ RHEL) are shown; translate for other distributions.
+`apt` (Debian / Ubuntu / Mint / Pop!\_OS) and `dnf` (Fedora / Rocky / Alma / RHEL) are shown; translate for other distributions.
 
 ### 1 — System packages
 
@@ -237,8 +218,7 @@ git clone <your-repository-url> wcag-checker
 cd wcag-checker
 ```
 
-Checkpoint: `ls` shows `leak_inspector`, `tests`, `README.md`,
-`pyproject.toml`.
+Checkpoint: `ls` shows `leak_inspector`, `tests`, `README.md`, `pyproject.toml`.
 
 ### 3 — Virtual environment
 
@@ -254,9 +234,9 @@ Checkpoint: the prompt now starts with `(.venv)`.
 ```bash
 pip install -e .
 ```
+Note the trailing dot. 
 
-Note the trailing dot. Then:
-
+Then:
 ```bash
 wcag-checker --help
 ```
@@ -273,9 +253,7 @@ With `(.venv)` active:
 wcag-checker https://example.com --once --out reports/
 ```
 
-On first run, Selenium downloads a matching `geckodriver` (once). Then
-Firefox opens, the page is audited, a summary prints, Firefox closes, and
-`reports/` holds the output.
+On first run, Selenium downloads a matching `geckodriver` (once). Then Firefox opens, the page is audited, a summary prints, Firefox closes, and `reports/` holds the output.
 
 Open the HTML report:
 
@@ -283,55 +261,39 @@ Open the HTML report:
 - macOS: `open reports/report.html`
 - Linux: `xdg-open reports/report.html`
 
-For interactive audits, drop `--once`, click into the page, press `F9` on
-each page you want checked, then close the window:
+For interactive audits, drop `--once`, click into the page, press `F9` on each page you want checked, then close the window:
 
 ```bash
 wcag-checker https://example.com --out reports/
 ```
 
-If `F9` clashes with something, pick another with `--hotkey` (e.g.
-`--hotkey ctrl+alt+shift+a`). See [README.md](README.md) for all three
-run modes.
+If `F9` clashes with something, pick another with `--hotkey` (e.g. `--hotkey ctrl+alt+shift+a`). See [README.md](README.md) for all three run modes.
 
 ---
 
 ## Common problems
 
-**"wcag-checker: command not found"** — the virtual environment isn't
-active (see below) or the install didn't finish. With `(.venv)` showing,
-run `pip install -e .` again from inside the project folder.
+**"wcag-checker: command not found"** — the virtual environment isn't active (see below) or the install didn't finish. With `(.venv)` showing, run `pip install -e .` again from inside the project folder.
 
-**Prompt lost its `(.venv)`** — re-activate it (needed in every new
-terminal):
+**Prompt lost its `(.venv)`** — re-activate it (needed in every new terminal):
 
 - Windows cmd: `.venv\Scripts\activate.bat`
 - macOS / Linux: `source .venv/bin/activate`
 
-**"geckodriver … might not be compatible"** — a warning, usually harmless.
-If runs actually fail, update Firefox (or geckodriver) so their versions
-match, or clear Selenium's cached driver so it re-downloads one.
+**"geckodriver … might not be compatible"** — a warning, usually harmless. If runs actually fail, update Firefox (or geckodriver) so their versions match, or clear Selenium's cached driver so it re-downloads one.
 
-**"ModuleNotFoundError: No module named 'leak_inspector'"** (or
-`'axe_selenium_python'`) — `pip install -e .` didn't complete. With
-`(.venv)` active and inside the project folder, run it again (mind the
-trailing dot).
+**"ModuleNotFoundError: No module named 'leak_inspector'"** (or `'axe_selenium_python'`) — `pip install -e .` didn't complete. With `(.venv)` active and inside the project folder, run it again (mind the trailing dot).
 
 **Firefox opens then closes / never appears:**
 
-- Snap Firefox (some Ubuntu releases) can't be driven by Selenium — use
-  `firefox-esr` or Mozilla's PPA build.
-- No display (SSH / server) — the default and interactive modes need a
-  real desktop.
+- Snap Firefox (some Ubuntu releases) can't be driven by Selenium — use `firefox-esr` or Mozilla's PPA build.
+- No display (SSH / server) — the default and interactive modes need a real desktop.
 
-**"permission denied"** — no wcag-checker command needs `sudo`. Permission
-errors during `pip install` mean the virtual environment isn't active.
+**"permission denied"** — no wcag-checker command needs `sudo`. Permission errors during `pip install` mean the virtual environment isn't active.
 
-**Saved HTML shows `��` and spaced-out letters** — you redirected output
-with PowerShell `>` (UTF-16). Use `--out` (writes UTF-8), or run in cmd.
+**Saved HTML shows `��` and spaced-out letters** — you redirected output with PowerShell `>` (UTF-16). Use `--out` (writes UTF-8), or run in cmd.
 
-When asking for help, include your OS and version, the first failed
-checkpoint, and the exact error text.
+When asking for help, include your OS and version, the first failed checkpoint, and the exact error text.
 
 ---
 
@@ -348,10 +310,9 @@ Everything (`.venv`, packages, reports) lives in that one folder.
 
 ### Also remove the system tools
 
-Only if nothing else needs them.
+⚠️ Only if nothing else needs them.
 
-- Windows: Settings → Apps → Installed apps → uninstall "Python 3.x" and
-  "Git".
+- Windows: Settings → Apps → Installed apps → uninstall "Python 3.x" and "Git".
 - macOS:
 
   ```bash
@@ -366,6 +327,4 @@ Don't remove `python3` or `git` themselves — the desktop relies on them.
 
 ### Firefox profiles
 
-Each run launches Firefox with a fresh temporary profile that is deleted
-when the audit finishes, so there is nothing extra to clean up. To audit
-authenticated pages, log in during an interactive (`wcag-checker`) session.
+Each run launches Firefox with a fresh temporary profile that is deleted when the audit finishes, so there is nothing extra to clean up. To audit authenticated pages, log in during an interactive (`wcag-checker`) session.

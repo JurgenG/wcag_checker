@@ -13,10 +13,15 @@ fully-rendered* page — the state a real visitor sees, including content
 behind interaction, consent banners, and client-side rendering. When the
 operator closes the browser, a report is written.
 
-This is a fork of the `leak_inspector` privacy tool. It reuses that
-tool's browser-capture core (Selenium + Firefox + WebDriver BiDi) and its
-report-shape philosophy, but replaces the entire tracker-analysis
-pipeline with WCAG auditing.
+This project began as a fork of the `leak_inspector` privacy tool, but
+little of that tool remains: the whole tracker-analysis pipeline and its
+supporting modules (`bundle/`, `events.py`, `safe_net.py`, the BiDi
+recorder, the privacy `report/`) were deleted. What is genuinely
+inherited is the browser-capture driver — `capture/driver.py` (Selenium +
+Firefox + geckodriver over WebDriver BiDi), carried over largely
+unchanged — plus the `leak_inspector/` package name. Everything else
+(all of `wcag/`, the session runner, the CLIs, batch mode, and the
+poll-based hotkey) is new code written for this tool.
 
 If you don't have enough information online or cannot reliably build a
 module, don't speculate. Only base modules on certain data. In
@@ -26,18 +31,22 @@ review" is always better than a false pass.
 
 ## Architecture
 
-- **Capture / session** (`leak_inspector/capture/`) — Selenium drives
-  Firefox via geckodriver, using WebDriver BiDi. The user clicks around
-  manually; the tool holds the session open and listens for the audit
-  hotkey. Reused from the fork mostly unchanged.
-- **Hotkey trigger** (`leak_inspector/capture/bidi.py`) — a BiDi preload
-  script injected into every browsing context binds the audit hotkey
-  (`Ctrl+Alt+A`). The keypress fires a `fetch()` to a reserved
-  `.invalid` sentinel host; BiDi's `network.beforeRequestSent` catches
-  it and fires a Python callback. This is the same in-band
-  keypress→callback signal the fork used for screenshots — no OS-level
-  hooks needed. (Only the signal survives the conversion; the fork's
-  network/event recorder was removed.)
+- **Capture / session** (`leak_inspector/capture/`) — `driver.py`: Selenium
+  drives Firefox via geckodriver, using WebDriver BiDi. The user clicks
+  around manually; the tool holds the session open and polls for the audit
+  hotkey. This is the one substantial piece inherited from the fork, kept
+  mostly unchanged.
+- **Hotkey trigger** (`leak_inspector/capture/hotkey.py`) — a poll-based
+  watcher (`HotkeyWatcher`). Each tick runs one `execute_script` that
+  installs a `keydown` listener in the page once per document (reinstalled
+  after navigation) and reads/clears a press counter; the session loop
+  polls on a timer and audits when the count is non-zero. The default
+  hotkey is `F9` (override with `--hotkey`). Polling — not the fork's
+  original BiDi `fetch()`-to-a-sentinel-host signal — because a page's
+  `Content-Security-Policy: connect-src` blocks that fetch before it is
+  sent, so the network signal never arrived on real CSP sites; reading a
+  counter via `execute_script` touches no network and is CSP-immune. The
+  key match is by `KeyboardEvent.code`, so it is layout-independent.
 - **WCAG audit** (`leak_inspector/wcag/`) — runs on the live driver when
   the hotkey fires:
   - `core.py` — driver-free dataclasses (`WcagCriterion`, `Finding`) and
@@ -90,8 +99,9 @@ Boundaries to keep clean:
 - `reporter/` is pure: it consumes `Finding` lists + the registry and
   emits text. It does not touch the network, the driver, or the
   filesystem (the CLI writes the files).
-- `capture/` drives the browser and raises the hotkey signal. It does not
-  import `wcag/`; the session runner wires the callback.
+- `capture/` drives the browser and reports hotkey presses when polled. It
+  does not import `wcag/`; the session runner polls the watcher and runs
+  the audit.
 
 Explicit non-goals: headless/scripted browsing (focus and keyboard
 behavior need a real desktop and a visible window), browsers other than
