@@ -45,7 +45,6 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlparse
 
 from .capture.driver import launch_driver
 from .session import (
@@ -53,6 +52,7 @@ from .session import (
     SCREENSHOT_DIRNAME,
     audit_page,
     capture_text_view,
+    domain_slug,
     wait_until_settled,
     write_reports,
 )
@@ -134,14 +134,13 @@ def read_urls(path: Path | str) -> list[tuple[str | None, str]]:
 def site_slug(url: str, taken: set[str]) -> str:
     """Return a filesystem-safe, unique subdirectory name for ``url``.
 
-    Derived from the host (path/query dropped); characters outside
-    ``[a-z0-9._-]`` become ``-``. If the resulting name is already in
-    ``taken``, a ``-2``, ``-3`` … suffix is appended so two URLs never
-    share an output directory. The chosen name is added to ``taken``.
+    Derived from the host via :func:`.session.domain_slug` (path/query
+    dropped; characters outside ``[a-z0-9._-]`` become ``-``). If the
+    resulting name is already in ``taken``, a ``-2``, ``-3`` … suffix is
+    appended so two URLs never share an output directory. The chosen name
+    is added to ``taken``.
     """
-    host = (urlparse(url).hostname or "").lower()
-    base = "".join(c if (c.isalnum() or c in "._-") else "-" for c in host).strip("-")
-    base = base or "site"
+    base = domain_slug(url)
     slug = base
     n = 1
     while slug in taken:

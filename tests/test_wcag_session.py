@@ -29,8 +29,24 @@ import json
 import pytest
 from selenium.common.exceptions import WebDriverException
 
-from leak_inspector.session import _run_audit_loop, parse_formats, write_reports
+from leak_inspector.session import (
+    _run_audit_loop,
+    domain_slug,
+    parse_formats,
+    write_reports,
+)
 from leak_inspector.wcag.core import Finding
+
+
+class TestDomainSlug:
+    def test_host_becomes_folder_name(self) -> None:
+        assert domain_slug("https://belibre.be/en/about#x") == "belibre.be"
+
+    def test_scheme_and_path_dropped(self) -> None:
+        assert domain_slug("https://x.be/a?b=1") == "x.be"
+
+    def test_empty_or_bad_host_falls_back(self) -> None:
+        assert domain_slug("not-a-url") == "site"
 
 
 class TestParseFormats:
@@ -286,6 +302,25 @@ class TestWriteReports:
         assert written["results.json"].exists()
         data = json.loads(written["results.json"].read_text(encoding="utf-8"))
         assert data["criteria"] == []
+
+    def test_filename_prefix_applied_to_every_output(self, tmp_path) -> None:
+        findings = [_finding("1.4.3", "error", "https://x/a")]
+        written = write_reports(
+            tmp_path,
+            findings,
+            ["https://x/a"],
+            formats=("html", "json", "jira-tickets"),
+            filename_prefix="202607300858_",
+        )
+        assert "202607300858_report.html" in written
+        assert "202607300858_results.json" in written
+        assert "202607300858_manual-checklist.md" in written
+        assert any(k.startswith("202607300858_jira/") for k in written)
+        for path in written.values():
+            assert path.exists()
+        # No un-prefixed leftovers that a later run could mistake for its own.
+        assert not (tmp_path / "report.html").exists()
+        assert not (tmp_path / "jira").exists()
 
 
 class TestCli:

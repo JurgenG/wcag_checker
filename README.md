@@ -34,7 +34,7 @@ wcag-checker https://example.com --out reports/
 
 1. Firefox opens on the URL. Browse normally.
 2. Click into the page (so it has keyboard focus), then press `F9` to audit its current rendered state (axe-core + keyboard/focus checks). Each audit is confirmed on the console. Repeat on as many pages as needed.
-3. Close the window. Reports for every audited page are written to `reports/`.
+3. Close the window. Reports for every audited page are written to a per-domain subfolder of `--out`, named after the starting URL's host — e.g. `reports/belibre.be/` — with a `YYYYMMDDHHMM_` timestamp on each filename (e.g. `202607300858_report.html`), so repeated audits of the same site sit side by side instead of overwriting each other. The console lists the exact files written.
 
 Options: `--out DIR` (default `reports/`), `--headless`, `--hotkey COMBO` (default `f9`) — change it if `F9` clashes with something, e.g. `--hotkey ctrl+alt+shift+a` — `--width PX` (resize the window to a chosen pixel width to audit a responsive/mobile layout, e.g. `--width 375`; Firefox enforces a minimum window width of ~500px, so narrower requests are clamped and the tool warns), and `--format FMT` (default `html`; see [Output](#output)).
 
@@ -93,7 +93,7 @@ Alongside the findings, every report embeds a **linearized reading view** (a *Re
 
 ## Output
 
-Written to the output directory (`--out`, default `reports/`). `--format` selects which findings report(s) to write (comma-separated; default `html`); the manual-review checklist and screenshots are always written.
+`wcag-checker` and `wcag-checker --once` write into a per-domain subfolder of `--out` (default `reports/`), named after the audited host — e.g. `reports/belibre.be/` — and prefix every report filename with a `YYYYMMDDHHMM_` run timestamp (e.g. `202607300858_report.html`), so successive audits of a site accumulate rather than overwrite. Filenames in the tables below are shown without that prefix. (`wcag-batch` keeps its own layout — one un-timestamped `report.html` per `<site>/` subfolder, since each batch run overwrites cleanly and the `summary.*` links point at those fixed names.) `--format` selects which findings report(s) to write (comma-separated; default `html`); the manual-review checklist and screenshots are always written.
 
 | `--format` | Output | Contents |
 | --- | --- | --- |
