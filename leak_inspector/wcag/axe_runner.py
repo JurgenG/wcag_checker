@@ -88,8 +88,10 @@ _RULES_FORCED_REVIEW = frozenset(ENABLED_EXPERIMENTAL_RULES)
 #: :func:`.media.check_media`; axe's ``audio-caption`` rule (1.2.1) is
 #: deprecated and does not run, and axe has no 1.2.3 rule, so this is
 #: latent today but keeps a future axe release from double-reporting.
-#: (1.2.2 and 1.4.2 stay with axe — its ``video-caption`` and
-#: ``no-autoplay-audio`` rules do decide those.)
+#: 1.2.2 and 1.4.2 stay with axe — its ``video-caption`` and
+#: ``no-autoplay-audio`` rules decide those for native elements. (No
+#: conflict with :mod:`.media`, which raises 1.2.2 only for cross-origin
+#: video *embeds* axe cannot see — a disjoint set of elements.)
 _CRITERIA_OWNED_ELSEWHERE = frozenset({"1.2.1", "1.2.3", "2.5.8"})
 
 

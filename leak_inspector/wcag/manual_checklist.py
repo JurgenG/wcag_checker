@@ -64,9 +64,11 @@ _REVIEW_TIERS = frozenset({"manual", "partial"})
 NOTE = (
     "These success criteria cannot be decided automatically. Confirm each "
     "one by hand on every page below. 'manual' criteria need human "
-    "judgement outright; 'partial' criteria may also have candidate "
-    "findings in the automated report — cross-check those. Completing this "
-    "checklist is necessary, but on its own still not a conformance claim."
+    "judgement outright. Many criteria (both 'manual' and 'partial') also "
+    "have candidate findings or review pointers in the automated report — "
+    "cross-check those, they point at the specific elements to verify. "
+    "Completing this checklist is necessary, but on its own still not a "
+    "conformance claim."
 )
 
 #: Ordered, concrete review questions per success criterion, keyed by

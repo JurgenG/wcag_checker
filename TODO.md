@@ -36,8 +36,14 @@ implies conformance.
   visibility (2.4.7 / 2.4.11), keyboard traps (2.1.2), tab order
   (2.4.3), target size (2.5.8, reconciled so only one engine reports it).
   Each check splits into an impure gatherer + pure evaluator.
-- Media presence checks (`wcag/media.py`) — 1.2.1 and 1.2.3 as
-  `needs-review`, without duplicating axe's 1.2.2 / 1.4.2.
+- Media checks (`wcag/media.py`) — inventories native `<audio>`/`<video>`
+  (stating the caption/subtitle/description `<track>`s found) for 1.2.1 /
+  1.2.3, and flags un-auditable YouTube/Vimeo embeds (1.2.2 + 1.2.3) and
+  other iframes (1.2.1); all `needs-review`, each with a screenshot.
+- Manual-review pointers (`wcag/pointers.py`) — locates the concrete
+  elements behind otherwise-manual criteria and points the reviewer at
+  them (`needs-review`, with screenshots): 4.1.3 live regions, 3.3.8
+  password fields + CAPTCHA, 2.4.5 search/nav/sitemap, 3.2.6 help/contact.
 - Descriptive-text heuristics (`wcag/content.py`) — 2.4.4 generic link
   text and 2.4.6 empty headings, both `needs-review`.
 - Reflow (`wcag/reflow.py`) — true 320 CSS-px viewport via BiDi,

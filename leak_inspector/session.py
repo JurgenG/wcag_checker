@@ -59,6 +59,7 @@ from .wcag import (
     keyboard_nav,
     manual_checklist,
     media,
+    pointers,
     reflow,
     reporter,
     screenshot,
@@ -171,7 +172,8 @@ def audit_page(
     """Run both audit engines against the driver's current page.
 
     Combines the axe-core audit (:mod:`.wcag.axe_runner`), the media
-    presence checks (:mod:`.wcag.media`), the descriptive-text heuristics
+    presence checks (:mod:`.wcag.media`), the manual-review pointers
+    (:mod:`.wcag.pointers`), the descriptive-text heuristics
     (:mod:`.wcag.content`), the keyboard/focus checks
     (:mod:`.wcag.keyboard_nav`), and the reflow check (:mod:`.wcag.reflow`)
     into one finding list, all labelled with ``url``. When
@@ -183,6 +185,7 @@ def audit_page(
     """
     findings = list(axe_runner.audit(driver, url))
     findings += media.check_media(driver, url)
+    findings += pointers.check_pointers(driver, url)
     findings += content.run_all(driver, url)
     findings += keyboard_nav.run_all(driver, url)
     findings += reflow.check_reflow(driver, url)

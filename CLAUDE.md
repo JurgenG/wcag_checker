@@ -60,11 +60,24 @@ review" is always better than a false pass.
   - `keyboard_nav.py` — focus/keyboard-flow checks axe-core deliberately
     skips (focus visibility, keyboard traps, tab order, target size).
     The highest-value custom code.
-  - `media.py` — native `<audio>`/`<video>` presence checks for the media
-    criteria axe does not decide: 1.2.1 (audio → transcript) and 1.2.3
-    (video → audio description / alternative), both `needs-review`. axe
-    already owns 1.2.2 (captions) and 1.4.2 (autoplay); those are not
-    duplicated here.
+  - `media.py` — inventories time-based media and makes explicit both what
+    it found and what it could not audit, all `needs-review`: native
+    `<audio>` → 1.2.1 (transcript) and native `<video>` → 1.2.3 (audio
+    description / alternative), each stating the caption/subtitle/description
+    `<track>`s detected; YouTube/Vimeo `<iframe>` embeds → 1.2.2 + 1.2.3
+    flagged un-auditable (captions live in a cross-origin frame); any other
+    `<iframe>` → 1.2.1 for a human to classify. axe owns 1.2.2 for *native*
+    video (`video-caption`) and 1.4.2 (autoplay); media's 1.2.2 covers only
+    embeds axe cannot see, so there is no overlap. Every finding carries a
+    selector, so `screenshot` captures the element.
+  - `pointers.py` — locates the concrete elements a manual-review
+    criterion hinges on and emits `needs-review` findings pointing the
+    reviewer at exactly what to verify (with a screenshot), for criteria
+    that otherwise have no automated candidate: 4.1.3 (ARIA live regions),
+    3.3.8 (password fields + CAPTCHA widgets), 2.4.5 (search / nav /
+    sitemap location mechanisms), and 3.2.6 (help / contact mechanisms).
+    Never a pass — only a pointer. Same gatherer/evaluator split as
+    `media.py`.
   - `content.py` — descriptive-text heuristics axe does not judge: 2.4.4
     (generic link text like "click here") and 2.4.6 (empty headings),
     both `needs-review`. (2.5.3 Label in Name is handled by enabling

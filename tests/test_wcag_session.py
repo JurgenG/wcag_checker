@@ -170,13 +170,14 @@ class TestAuditPage:
     def test_captures_evidence_when_dir_given(self, monkeypatch) -> None:
         from leak_inspector import session
         from leak_inspector.wcag import (
-            axe_runner, content, keyboard_nav, media, reflow, screenshot,
+            axe_runner, content, keyboard_nav, media, pointers, reflow, screenshot,
         )
 
         base = _finding("1.4.3", "error", "https://x/a")
         monkeypatch.setattr(axe_runner, "audit", lambda d, u: [base])
         monkeypatch.setattr(keyboard_nav, "run_all", lambda d, u: [])
         monkeypatch.setattr(media, "check_media", lambda d, u: [])
+        monkeypatch.setattr(pointers, "check_pointers", lambda d, u: [])
         monkeypatch.setattr(content, "run_all", lambda d, u: [])
         monkeypatch.setattr(reflow, "check_reflow", lambda d, u: [])
 
@@ -195,12 +196,13 @@ class TestAuditPage:
     def test_skips_capture_without_dir(self, monkeypatch) -> None:
         from leak_inspector import session
         from leak_inspector.wcag import (
-            axe_runner, content, keyboard_nav, media, reflow, screenshot,
+            axe_runner, content, keyboard_nav, media, pointers, reflow, screenshot,
         )
 
         monkeypatch.setattr(axe_runner, "audit", lambda d, u: [])
         monkeypatch.setattr(keyboard_nav, "run_all", lambda d, u: [])
         monkeypatch.setattr(media, "check_media", lambda d, u: [])
+        monkeypatch.setattr(pointers, "check_pointers", lambda d, u: [])
         monkeypatch.setattr(content, "run_all", lambda d, u: [])
         monkeypatch.setattr(reflow, "check_reflow", lambda d, u: [])
 
