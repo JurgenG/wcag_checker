@@ -4,178 +4,136 @@ Guidelines for Claude when working in this repository.
 
 ## This project
 
-`wcag-checker` records a real, human-driven browsing session in Firefox
-and audits the visited pages for **WCAG 2.2 AA** accessibility
-conformance. The operator opens the tool on a URL, browses the site
-normally, and presses an **audit hotkey** on any page they want checked.
-At that moment the tool runs an accessibility audit against the *live,
-fully-rendered* page — the state a real visitor sees, including content
-behind interaction, consent banners, and client-side rendering. When the
-operator closes the browser, a report is written.
+`wcag-checker` audits web pages for **WCAG 2.2 AA** accessibility in a
+real, human-driven Firefox session. The operator opens the tool on a URL,
+browses normally, and presses an **audit hotkey** on any page they want
+checked. The audit runs against the *live, fully-rendered* page — including
+content behind interaction, consent banners, and client-side rendering.
+When the operator closes the browser, the reports are written.
 
-This project began as a fork of the `leak_inspector` privacy tool, but
-little of that tool remains: the whole tracker-analysis pipeline and its
-supporting modules (`bundle/`, `events.py`, `safe_net.py`, the BiDi
-recorder, the privacy `report/`) were deleted. What is genuinely
-inherited is the browser-capture driver — `capture/driver.py` (Selenium +
-Firefox + geckodriver over WebDriver BiDi), carried over largely
-unchanged — plus the `leak_inspector/` package name. Everything else
-(all of `wcag/`, the session runner, the CLIs, batch mode, and the
-poll-based hotkey) is new code written for this tool.
-
-If you don't have enough information online or cannot reliably build a
-module, don't speculate. Only base modules on certain data. In
-particular, never claim automated coverage of a WCAG criterion that the
-underlying engine cannot actually decide — an honest "needs manual
-review" is always better than a false pass.
+Only base modules on certain data; if you cannot find reliable
+information, don't speculate. Never claim automated coverage of a WCAG
+criterion the underlying engine cannot actually decide — an honest
+"needs manual review" is always better than a false pass.
 
 ## Architecture
 
-- **Capture / session** (`leak_inspector/capture/`) — `driver.py`: Selenium
-  drives Firefox via geckodriver, using WebDriver BiDi. The user clicks
-  around manually; the tool holds the session open and polls for the audit
-  hotkey. This is the one substantial piece inherited from the fork, kept
-  mostly unchanged.
-- **Hotkey trigger** (`leak_inspector/capture/hotkey.py`) — a poll-based
-  watcher (`HotkeyWatcher`). Each tick runs one `execute_script` that
-  installs a `keydown` listener in the page once per document (reinstalled
-  after navigation) and reads/clears a press counter; the session loop
-  polls on a timer and audits when the count is non-zero. The default
-  hotkey is `F9` (override with `--hotkey`). Polling — not the fork's
-  original BiDi `fetch()`-to-a-sentinel-host signal — because a page's
-  `Content-Security-Policy: connect-src` blocks that fetch before it is
-  sent, so the network signal never arrived on real CSP sites; reading a
-  counter via `execute_script` touches no network and is CSP-immune. The
-  key match is by `KeyboardEvent.code`, so it is layout-independent.
+- **Capture** (`leak_inspector/capture/`)
+  - `driver.py` — Selenium drives Firefox via geckodriver over WebDriver
+    BiDi. Downloads a private Firefox when none is installed.
+  - `hotkey.py` — `HotkeyWatcher`: each poll runs one `execute_script`
+    that installs a `keydown` listener once per document and reads/clears
+    a press counter. Default `F9` (`--hotkey`), matched by
+    `KeyboardEvent.code` (layout-independent). The trigger must stay
+    CSP-immune: never signal via a page-originated network request
+    (`connect-src` blocks it).
 - **WCAG audit** (`leak_inspector/wcag/`) — runs on the live driver when
   the hotkey fires:
-  - `core.py` — driver-free dataclasses (`WcagCriterion`, `Finding`) and
-    the WCAG 2.2 criteria registry with per-criterion automatability tier
-    (`full` / `partial` / `manual`). The single source of truth for
-    coverage claims. No driver import.
-  - `axe_runner.py` — wraps the axe-core engine (via
-    `axe-selenium-python`) and normalizes its violations/incomplete
-    results into `Finding` objects. Takes the driver as-is; never creates
-    or owns the browser session.
-  - `keyboard_nav.py` — focus/keyboard-flow checks axe-core deliberately
-    skips (focus visibility, keyboard traps, tab order, target size).
-    The highest-value custom code.
-  - `media.py` — inventories time-based media and makes explicit both what
-    it found and what it could not audit, all `needs-review`: native
-    `<audio>` → 1.2.1 (transcript) and native `<video>` → 1.2.3 (audio
-    description / alternative), each stating the caption/subtitle/description
-    `<track>`s detected; YouTube/Vimeo `<iframe>` embeds → 1.2.2 + 1.2.3
-    flagged un-auditable (captions live in a cross-origin frame); any other
-    `<iframe>` → 1.2.1 for a human to classify. axe owns 1.2.2 for *native*
-    video (`video-caption`) and 1.4.2 (autoplay); media's 1.2.2 covers only
-    embeds axe cannot see, so there is no overlap. Every finding carries a
-    selector, so `screenshot` captures the element.
-  - `pointers.py` — locates the concrete elements a manual-review
-    criterion hinges on and emits `needs-review` findings pointing the
-    reviewer at exactly what to verify (with a screenshot), for criteria
-    that otherwise have no automated candidate: 4.1.3 (ARIA live regions),
-    3.3.8 (password fields + CAPTCHA widgets), 2.4.5 (search / nav /
-    sitemap location mechanisms), and 3.2.6 (help / contact mechanisms).
-    Never a pass — only a pointer. Same gatherer/evaluator split as
-    `media.py`.
-  - `content.py` — descriptive-text heuristics axe does not judge: 2.4.4
-    (generic link text like "click here") and 2.4.6 (empty headings),
-    both `needs-review`. (2.5.3 Label in Name is handled by enabling
-    axe's experimental `label-content-name-mismatch` rule in
-    `axe_runner`, not here — axe's accessible-name computation is
-    authoritative.)
-  - `reflow.py` — 1.4.10 Reflow: sets a true 320 CSS-px viewport via
-    WebDriver BiDi (`browsing_context.set_viewport`, which beats the
-    ~500px Firefox window floor), flags horizontal overflow as
-    `needs-review`, and restores the operator's viewport afterwards.
-  - `manual_checklist.py` — generates the human-review checklist for the
-    majority of criteria that cannot be asserted automatically.
-  - `text_view.py` — produces an approximate *linearized reading view* of
-    the live page (accessible-name tree walked in source order) as a
-    manual-review aid; `reporter` embeds it as a *Reading view* section in
-    every report format. Takes a live driver like `axe_runner`; makes no
-    pass/fail claim (a reading aid, not a screen-reader test).
-  - `reporter.py` — merges findings grouped by WCAG criterion and renders
-    JSON (canonical) + text + Markdown + HTML, always with a coverage
-    summary. Pure: findings in, strings out.
-- **Session runner + CLI** — orchestrates capture → per-page audit →
-  report. On window close, writes reports and a canonical `results.json`
-  to the output directory.
+  - `core.py` — driver-free `WcagCriterion` / `Finding` dataclasses and
+    the WCAG 2.2 registry with each criterion's automatability tier
+    (`full` / `partial` / `manual`). Single source of truth for coverage
+    claims.
+  - `axe_runner.py` — runs axe-core (via `axe-selenium-python`) and
+    normalizes violations/incomplete results into `Finding`s. Enables
+    axe's experimental `label-content-name-mismatch` rule for 2.5.3.
+  - `keyboard_nav.py` — focus/keyboard checks axe-core skips: focus
+    visibility (2.4.7 / 2.4.11), keyboard traps (2.1.2), tab order
+    (2.4.3), target size (2.5.8).
+  - `media.py` — `needs-review` media inventory: native `<audio>` → 1.2.1,
+    native `<video>` → 1.2.3 (listing detected `<track>`s), YouTube/Vimeo
+    embeds → 1.2.2 + 1.2.3, other `<iframe>`s → 1.2.1. axe owns 1.2.2 for
+    native video and 1.4.2; media's 1.2.2 covers only embeds.
+  - `pointers.py` — `needs-review` pointers to the elements a manual
+    criterion hinges on: 4.1.3 live regions, 3.3.8 password fields +
+    CAPTCHA, 2.4.5 search/nav/sitemap, 3.2.6 help/contact.
+  - `content.py` — 2.4.4 generic link text and 2.4.6 empty headings,
+    `needs-review`.
+  - `reflow.py` — 1.4.10: sets a 320 CSS-px viewport via BiDi
+    `browsing_context.set_viewport`, flags horizontal overflow, restores
+    the viewport.
+  - `screenshot.py` — one PNG per flagged element, deduped by
+    `(url, selector)`.
+  - `text_view.py` — linearized reading view (accessible-name tree in
+    source order), embedded in every report. A reading aid, no pass/fail.
+  - `manual_checklist.py` — per-criterion review questions for the
+    criteria tooling cannot decide.
+  - `reporter.py` — groups findings by criterion and renders JSON
+    (canonical), text, Markdown, HTML and JIRA tickets, always with a
+    coverage summary.
+- **Session + CLI** — `session.py` (interactive and `--once` runs),
+  `batch.py` (URL lists), `cli.py` / `cli_batch.py` (argument parsing).
+  Reports are written on window close.
 
 Boundaries to keep clean:
 
-- `core/` imports nothing browser- or driver-specific. Everything else
-  may import `core`; `core` imports none of them.
-- `axe_runner/` and `keyboard_nav/` take a live driver handle from the
-  caller and run against it. They do not launch, configure, or close the
-  browser — the session layer owns that.
-- `reporter/` is pure: it consumes `Finding` lists + the registry and
-  emits text. It does not touch the network, the driver, or the
-  filesystem (the CLI writes the files).
-- `capture/` drives the browser and reports hotkey presses when polled. It
-  does not import `wcag/`; the session runner polls the watcher and runs
-  the audit.
+- `core` imports nothing browser- or driver-specific; everything may
+  import `core`.
+- Checks take a live driver handle from the caller. They never launch,
+  configure, or close the browser — the session layer owns that.
+- `reporter` is pure: findings in, strings out. The CLI writes files.
+- `capture` does not import `wcag`; the session runner polls the watcher
+  and runs the audit.
 
-Explicit non-goals: headless/scripted browsing (focus and keyboard
-behavior need a real desktop and a visible window), browsers other than
-Firefox, screen-reader announcement testing (NVDA/JAWS/VoiceOver
-scripting — mark manual), content-quality heuristics (plain language,
-error-message helpfulness — mark manual, don't ship noise), and silent
-axe rule suppressions (every exclusion needs a justifying comment). A
-clean automated run does **not** imply WCAG conformance; the report
-always says so.
+Constraints:
+
+- Firefox only, visible desktop window (focus and keyboard behavior need
+  one).
+- Screen-reader announcement testing and content-quality judgements
+  (plain language, error-message helpfulness) stay in the manual
+  checklist — don't ship noisy heuristics.
+- Every axe rule exclusion carries a justifying comment.
+- Every report states that a clean automated run is not WCAG conformance.
 
 ## Code standards
 
-- Adhere to Python PEP standards, in particular:
-  - **PEP 8** — code style (naming, indentation, line length, imports).
-  - **PEP 257** — docstring conventions.
-  - **PEP 484 / PEP 604** — type hints; annotate public functions and methods.
-  - **PEP 20** (Zen of Python) — prefer simple, explicit, readable code.
-- The codebase is fully synchronous — do not introduce async.
-- Match the existing style; do not introduce a new formatter/linter
-  without asking.
-- Write modular code, prefer small functions over large blobs.
+- Follow PEP 8 (style), PEP 257 (docstrings), PEP 484 / PEP 604 (type
+  hints on public functions and methods), PEP 20 (simple, explicit).
+- Fully synchronous — no async.
+- Match the existing style; don't introduce a formatter/linter without
+  asking.
+- Small, focused modules and short functions; separate parsing, logic,
+  I/O and presentation. Prefer pure functions; isolate driver side
+  effects. Keep public interfaces minimal.
 
-## Documentation
+## Code documentation
 
-- Every module, public class, and public function gets a docstring (PEP 257).
-- Docstrings describe **purpose, inputs, outputs, and side effects** — not implementation details that the code already shows.
-- Keep inline comments rare and reserved for non-obvious *why*, not *what*.
-- Each WCAG check documents the criterion id(s) it supports in its docstring.
-- Update relevant docs (README, module docstrings) when behavior or interfaces change.
-- Create/use TODO.md in the project root when new tasks are added to a queue.
-- Create/use SBOM.md to maintain an SBOM and comment on the key processes.
+- Every module, public class, and public function gets a docstring
+  describing **purpose, inputs, outputs, and side effects**.
+- Each WCAG check names the criterion id(s) it supports in its docstring.
+- Inline comments are rare and explain a non-obvious *why*.
 
-## Modular development
+## Project documentation
 
-- Build small, focused modules with clear single responsibilities.
-- Keep functions short; extract helpers when a function does more than one thing.
-- Separate concerns: parsing, business logic, I/O, and presentation live in distinct modules.
-- Prefer pure functions where practical; isolate side effects (esp. the driver).
-- Public interfaces should be minimal and explicit; avoid leaking internals.
+Applies to README.md, INSTALL.md, PROJECT.md, docs/ and SBOM.md:
+
+- **Current state only.** Write as if the project were new. No history,
+  no "previously", no "was removed", no fork lineage.
+- **Explain what it does.** Don't list what it doesn't do, what was
+  dropped, or how a decision was reached.
+- **Tutorials assume nothing.** Step-by-step guides assume no prior
+  knowledge and nothing installed, and cover macOS, Windows and Linux.
+- Update the relevant docs when behavior or interfaces change.
+- Keep `TODO.md` as the task queue and `SBOM.md` as the dependency list
+  with its maintenance processes.
 
 ## Testing (TDD)
 
-- Build a test for every new feature that gets added (`tests/`, pytest).
+- Every new feature gets a test (`tests/`, pytest).
 - Unit tests are hermetic — no live browser, no network. Test the pure
-  decision logic (registry, axe-output normalization, keyboard-check
-  helpers, report rendering) against canned data and fixtures.
-- Each `keyboard_nav` check gets a known-good and known-bad fixture so
-  correctness isn't only validated against live external sites.
-- A check returns `list[Finding]` and never raises for "issues found" —
-  only for real execution errors (page crashed, selector failed).
+  decision logic against canned data and fixtures.
+- Each `keyboard_nav` check gets a known-good and a known-bad fixture.
+- A check returns `list[Finding]` and raises only for real execution
+  errors, never for "issues found".
 
 ## Scope discipline
 
-- **Do only what is asked.** Do not add features, options, configuration, abstractions, or "nice-to-haves" that were not requested.
-- No speculative generality — no hooks, plugin systems, or extension points for hypothetical future needs.
-- No unrequested refactors. If you spot something worth changing, mention it and wait for direction.
-- No extra error handling, logging, retries, or validation beyond what the task requires or what is needed at real system boundaries.
+- **Do only what is asked.** No unrequested features, options,
+  abstractions, refactors, or extra error handling. If you spot something
+  worth changing, mention it and wait.
 - Prefer editing existing files over creating new ones.
 
 ## When in doubt, ask
 
-- If requirements are ambiguous, the desired scope is unclear, or there are multiple reasonable approaches with meaningful trade-offs, **ask a clarifying question before writing code**.
-- Surface assumptions explicitly rather than silently choosing.
-- It is always better to ask one short question than to deliver the wrong thing.
+- If requirements are ambiguous or there are approaches with meaningful
+  trade-offs, ask one short clarifying question before writing code, and
+  surface assumptions explicitly.

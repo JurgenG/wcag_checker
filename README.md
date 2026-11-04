@@ -1,158 +1,126 @@
 # wcag-checker
 
-Audit a live, browser-rendered web page for WCAG 2.2 AA conformance. `wcag-checker` drives a real Firefox and runs its checks against the DOM as rendered, including client-side content and state reached by interaction (e.g. after dismissing a consent banner).
+`wcag-checker` audits web pages for **WCAG 2.2 AA** accessibility. It opens a real Firefox window, you browse the site as a visitor would, and on any page you want checked you press **F9**. The tool audits that page exactly as it is on screen — after cookie banners, menus, logins and client-side rendering — and when you close the window it writes a report.
 
-A clean run is not a conformance claim: automated tooling decides only part of a subset of the success criteria (see [Coverage](#coverage)).
-
-## Requirements
-
-- Python 3.12+
-- Firefox. geckodriver is fetched automatically by Selenium; if Firefox is missing, a private copy is downloaded on first run.
-- A visible desktop for the interactive and default runs — the keyboard/focus checks move focus and measure the rendered page. `--headless` runs without a window, but those checks are less reliable.
+Each report combines automated findings, screenshots of every flagged element, a coverage table for all WCAG 2.2 A + AA criteria, and a step-by-step checklist for the criteria a person has to judge. Together they form the starting point of a full accessibility review.
 
 ## Install
 
-See [INSTALL.md](INSTALL.md) for a step-by-step guide. Short version:
+[INSTALL.md](INSTALL.md) walks through the installation on Windows, macOS and Linux, starting from a computer with nothing installed.
 
-```bash
-git clone <your-repository-url> wcag-checker
-cd wcag-checker
-python3 -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate.bat
-pip install -e .
-```
+Requirements: Python 3.12 or newer, Git, Firefox, and a desktop session with a visible screen.
 
 ## Usage
 
-Three modes, all writing the same per-page report set.
+There are three ways to run it. All of them write the same kind of report.
 
-### Interactive (`wcag-checker`)
-
-```bash
-wcag-checker https://example.com --out reports/
-```
-
-1. Firefox opens on the URL. Browse normally.
-2. Click into the page (so it has keyboard focus), then press `F9` to audit its current rendered state (axe-core + keyboard/focus checks). Each audit is confirmed on the console. Repeat on as many pages as needed.
-3. Close the window. Reports for every audited page are written to a per-domain subfolder of `--out`, named after the starting URL's host — e.g. `reports/belibre.be/` — with a `YYYYMMDDHHMM_` timestamp on each filename (e.g. `202607300858_report.html`), so repeated audits of the same site sit side by side instead of overwriting each other. The console lists the exact files written.
-
-Options: `--out DIR` (default `reports/`), `--headless`, `--hotkey COMBO` (default `f9`) — change it if `F9` clashes with something, e.g. `--hotkey ctrl+alt+shift+a` — `--width PX` (resize the window to a chosen pixel width to audit a responsive/mobile layout, e.g. `--width 375`; Firefox enforces a minimum window width of ~500px, so narrower requests are clamped and the tool warns), and `--format FMT` (default `html`; see [Output](#output)).
-
-### One-shot (`wcag-checker --once`)
+### Interactive: browse and press F9
 
 ```bash
-wcag-checker https://example.com --once --out reports/
+wcag-checker https://example.com
 ```
 
-Opens Firefox, waits for the page to settle (so a client-side redirect does not race the audit), audits that page, writes the reports, and exits. If the page redirects, the settled URL is audited and reported.
+1. Firefox opens on the URL. Browse the site normally.
+2. On a page you want checked, click once inside the page, then press `F9`. The terminal confirms each audit, e.g. `audited https://example.com/ — 12 finding(s)`. Repeat on as many pages as you like.
+3. Close the Firefox window. The reports are written and the terminal lists the files.
 
-Options: 
-* `--out DIR` (default `reports/`) 
-* `--headless`, `--width PX` (audit at a chosen pixel width, e.g. `--width 375`)
-* `--format FMT` (default `html`; see [Output](#output)).
-
-### Batch (`wcag-batch`)
+### One page, automatically: `--once`
 
 ```bash
-wcag-batch urls.txt --out runs/
-wcag-batch bulk-tool/datasets/publiq/domains.csv --out runs/ --limit 20
+wcag-checker https://example.com --once
 ```
 
-Audits every URL in a list, reusing one Firefox. The list is either **one URL per line**, or a **two-column** `name,website` CSV (with a header row, like the municipalities dataset) — the name then labels the site in the summary and titles its report, and the website is audited. `#` comments and blank lines are ignored. Each site is audited into `runs/<site>/` (in the chosen `--format`); a site that fails (DNS error, timeout, …) is recorded and the run continues. `runs/summary.{json,md,html}` has one row per site — findings by severity or the failure — linking to each report.
+Opens Firefox, waits for the page to finish loading (following any redirect), audits it, writes the report and closes.
 
-Options:
-* `--out DIR` (default `runs/`)
-* `--limit N`, `--headless`
-* `--width PX` (audit every site at a chosen pixel width, e.g. `--width 375`)
-* `--format FMT` (default `html`; see [Output](#output)).
+### A list of sites: `wcag-batch`
 
-Example URL lists are in `bulk-tool/datasets/`.
+```bash
+wcag-batch urls.txt
+wcag-batch bulk-tool/datasets/publiq/domains.csv --limit 20
+```
+
+Audits every URL in a file, one after the other, in one Firefox window. The file contains either one URL per line, or two comma-separated columns such as `name,website` (the name then labels the site in the summary). Lines starting with `#` and blank lines are skipped. A site that cannot be reached is recorded as failed and the run continues. Example lists are in `bulk-tool/datasets/`.
+
+### Options
+
+| Option | Applies to | Effect |
+| --- | --- | --- |
+| `--out DIR` | all | Where reports go. Default `reports/` (`runs/` for `wcag-batch`). |
+| `--format FMT` | all | Report format(s), comma-separated. Default `html`. See [Output](#output). |
+| `--width PX` | all | Resize the window to this width before auditing, to check a mobile layout, e.g. `--width 375`. Firefox has a minimum window width of about 500 px; the tool warns when it audited at a wider width than asked. |
+| `--headless` | all | Run Firefox without a visible window. Keyboard and focus checks are most reliable with a visible window. |
+| `--hotkey COMBO` | interactive | Use a different audit key, e.g. `--hotkey ctrl+alt+shift+a`. Modifiers: `ctrl`, `alt`, `shift`, `meta`. |
+| `--once` | `wcag-checker` | Audit the starting page once and exit. |
+| `--limit N` | `wcag-batch` | Audit only the first N URLs. |
 
 ## What gets checked
 
-Several engines run against the live page; findings are merged and grouped by WCAG criterion:
+Every audit runs these checks against the live page and groups the results by WCAG success criterion:
 
-- **axe-core**, with the AA tag set (`wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`, `wcag22aa`): colour contrast, `lang`, name/role/value, ARIA validity, prerecorded-video captions (1.2.2), autoplaying audio (1.4.2), time limits / meta-refresh (2.2.1), moving content (2.2.2), and more. axe's experimental **label-in-name (2.5.3)** rule is enabled too (a control whose visible text is missing from its accessible name), reported `needs-review`. axe "incomplete" results are reported as `needs-review`, not as passes.
-- **Keyboard/focus checks** axe does not perform, each reported as `needs-review`:
-  - 2.4.7 / 2.4.11 — focus indicator visible; focused element not obscured
-  - 2.1.2 — keyboard focus trap
-  - 2.4.3 — positive `tabindex` overriding focus order
-  - 2.5.8 — targets smaller than 24×24 CSS px
-- **Media presence** (native `<audio>`/`<video>`), each `needs-review`:
-  - 1.2.1 — an `<audio>` is present → confirm a transcript exists
-  - 1.2.3 — a `<video>` is present → confirm an audio description or text alternative exists
-  - (media inside cross-origin `<iframe>` embeds — YouTube/Vimeo — is not visible and stays a manual check.)
-- **Descriptive-text heuristics**, each `needs-review`:
-  - 2.4.4 — links whose text is a generic filler phrase ("click here", "read more", …) that does not describe the destination
-  - 2.4.6 — headings with no text content
-- **Reflow** — at a true 320 CSS-px viewport (set via WebDriver BiDi, then restored), flags horizontal scrolling as a 1.4.10 `needs-review` candidate (data tables and maps are exempt — a human confirms).
+- **axe-core** with the WCAG 2.0 / 2.1 / 2.2 A and AA rules: colour contrast, page language, names/roles/values, ARIA validity, captions on native video (1.2.2), autoplaying audio (1.4.2), meta refresh (2.2.1), moving content (2.2.2), label in name (2.5.3), and more.
+- **Keyboard and focus**: visible focus indicator and focus not hidden (2.4.7 / 2.4.11), keyboard traps (2.1.2), positive `tabindex` overriding focus order (2.4.3), targets smaller than 24×24 px (2.5.8).
+- **Media**: native `<audio>` (1.2.1 transcript) and `<video>` (1.2.3 audio description), listing the caption/subtitle/description tracks found; YouTube and Vimeo embeds (1.2.2 + 1.2.3); other embedded frames (1.2.1).
+- **Review pointers** for criteria a person must judge, pointing at the exact elements to look at: live regions (4.1.3), password fields and CAPTCHAs (3.3.8), search / navigation / sitemap (2.4.5), help and contact links (3.2.6).
+- **Descriptive text**: generic link text such as "click here" or "read more" (2.4.4), empty headings (2.4.6).
+- **Reflow**: horizontal scrolling at a 320 px wide viewport (1.4.10).
 
-These automated candidates never assert a pass; they narrow what a human must still confirm. Everything else stays in the manual checklist.
-
-Alongside the findings, every report embeds a **linearized reading view** (a *Reading view* section) — the accessible-name tree walked in source order, the way a screen reader or text-only browser broadly reads down the page, flagging elements with no accessible name. It is a manual-review aid, not a pass/fail check: it cannot judge whether names are *meaningful* or whether the order matches the visual layout, so those stay a human's call.
+Every report also contains a **reading view**: the page's content and accessible names in source order, roughly the way a screen reader or text-only browser reads it, with unnamed elements marked. It helps a reviewer judge reading order and naming.
 
 ## Output
 
-`wcag-checker` and `wcag-checker --once` write into a per-domain subfolder of `--out` (default `reports/`), named after the audited host — e.g. `reports/belibre.be/` — and prefix every report filename with a `YYYYMMDDHHMM_` run timestamp (e.g. `202607300858_report.html`), so successive audits of a site accumulate rather than overwrite. Filenames in the tables below are shown without that prefix. (`wcag-batch` keeps its own layout — one un-timestamped `report.html` per `<site>/` subfolder, since each batch run overwrites cleanly and the `summary.*` links point at those fixed names.) `--format` selects which findings report(s) to write (comma-separated; default `html`); the manual-review checklist and screenshots are always written.
+`wcag-checker` writes into a folder per website inside `--out`, e.g. `reports/example.com/`. Every filename starts with the date and time of the run (`202611041530_report.html`), so repeated audits of the same site sit side by side.
 
-| `--format` | Output | Contents |
+`--format` chooses the report formats (comma-separated, e.g. `--format html,jira-tickets`):
+
+| `--format` | File | Contents |
 | --- | --- | --- |
-| `html` *(default)* | `report.html` | HTML report (inline styling); findings grouped by criterion, each with a screenshot thumbnail, plus the coverage table, the collapsible reading-view section, and the collapsible manual-review checklist. |
-| `md` | `report.md` | Markdown report. |
-| `txt` | `report.txt` | Plain-text report. |
-| `json` | `results.json` | Machine-readable result: each finding (criterion id, severity, message, selector, screenshot path), the coverage summary, the per-criterion coverage table (`coverage`), and the reading view (`reading_view`). |
-| `jira-tickets` | `jira/*.md` | One JIRA-style Markdown ticket per issue type (WCAG criterion): fields, affected elements, acceptance criteria. |
+| `html` *(default)* | `report.html` | Findings by criterion with screenshot thumbnails, the coverage table, the reading view and the manual checklist. Opens in any browser; works offline. |
+| `md` | `report.md` | The same as Markdown. |
+| `txt` | `report.txt` | The same as plain text. |
+| `json` | `results.json` | Machine-readable: every finding (criterion, severity, message, selector, screenshot path), the coverage table and the reading view. |
+| `jira-tickets` | `jira/*.md` | One JIRA-style ticket per WCAG criterion with affected elements and acceptance criteria. |
 | `all` | all of the above | |
 
-Always written, regardless of `--format`:
+Always written:
 
 | File | Contents |
 | --- | --- |
-| `manual-checklist.md` | Review checklist: the 46 A + AA criteria tooling cannot decide, each with step-by-step questions, per audited page. |
-| `screenshots/` | One PNG per flagged element (one shot per element, reused across criteria). Findings reference these by relative path. |
+| `manual-checklist.md` | Step-by-step review questions for the 46 A + AA criteria that need human judgement, for every audited page. |
+| `screenshots/` | One PNG per flagged element, with the element outlined. |
 
-Every report makes coverage **explicit**: a *Coverage — all WCAG 2.2 A + AA criteria* table lists every in-scope criterion with its coverage tier (`full` / `partial` / `manual`) and what this run could say about it — `N finding(s)`, `no automated finding` (the automatable part was checked and nothing was flagged — *not* a pass), or `needs manual review` (not decided automatically). The **manual-review checklist** (the actionable per-criterion questions) is embedded too — collapsible in `report.html`, a `## Manual-review checklist` section in `report.md` / `report.txt` — in addition to the standalone `manual-checklist.md` working document.
+`wcag-batch` writes one folder per site (`runs/<site>/report.html`, …) plus `runs/summary.html`, `summary.md` and `summary.json` with one row per site linking to its report.
 
-The **reading view** (linearized accessible-name walk, a screen-reader / text-only review aid) is embedded inside each report format — a collapsible section in `report.html`, a `## Reading view` section in `report.md` / `report.txt`, and a `reading_view` array in `results.json` — rather than a separate file. It is a review aid, **not** a screen-reader test or a pass/fail check.
+### Reading the results
 
-Examples: `--format json`, `--format html,jira-tickets`, `--format all`.
+Each finding has a **severity**:
 
-`wcag-batch` applies `--format` per site and additionally writes `summary.{json,md,html}` at the top level, one subdirectory per site.
+- **error** — a definite failure.
+- **warning** — a lower-impact definite failure.
+- **needs-review** — a candidate a person confirms or dismisses.
 
-Severities: **error** (definite failure), **warning** (lower-impact definite failure), **needs-review** (unconfirmed candidate). axe's own grade (`critical`/`serious`/`moderate`/`minor`) is kept as the finding's **impact**.
+axe-core's own grading (`critical`, `serious`, `moderate`, `minor`) is kept as the finding's **impact**.
 
-### Priority
-
-Every report leads with a **priority overview** and orders findings worst-first. Each criterion gets a remediation band (a fix-order hint, not a conformance score):
+Reports open with a **priority overview** and list criteria worst-first:
 
 | Band | Meaning |
 | --- | --- |
-| **P1 · Critical** | a definite failure of a level **A** criterion (the most fundamental barriers; A is a prerequisite for AA) |
-| **P2 · High** | a definite failure at level **AA** |
-| **P3 · Medium** | a lower-impact definite failure (warning) |
-| **P4 · Review** | only unconfirmed candidates — a human must triage before it is a bug |
+| **P1 · Critical** | Definite failure of a level A criterion. |
+| **P2 · High** | Definite failure of a level AA criterion. |
+| **P3 · Medium** | Lower-impact definite failure (warning). |
+| **P4 · Review** | Only candidates; a person triages them first. |
 
-Within a band, criteria are ordered by axe impact then by number of occurrences. JIRA tickets carry the band in their title, `Priority` field, and labels (P4 tickets are typed as triage, not confirmed bugs) so a backlog auto-orders.
+Within a band, criteria are ordered by impact, then by number of occurrences. JIRA tickets carry the band in their title, priority field and labels.
 
 ## Coverage
 
-Each WCAG 2.2 success criterion is classified by how much a tool can decide (registry: `leak_inspector/wcag/core.py`):
+Every WCAG 2.2 success criterion has a coverage tier:
 
-- **full** — the automatable substance can be decided by the tool (e.g. colour contrast, `lang`, name/role/value).
-- **partial** — the tool flags candidates; a human confirms (e.g. link-text quality, reflow, focus order, target size). **manual** — needs human judgement; the tool emits only a review item (e.g. meaningfulness of alt text, error-message quality, plain language).
+- **full** — the tool decides the automatable part (e.g. colour contrast, page language, name/role/value).
+- **partial** — the tool flags candidates and a person confirms (e.g. link text, reflow, focus order, target size).
+- **manual** — a person decides, guided by the checklist and any review pointers (e.g. whether alt text is meaningful, error-message quality).
 
-All 86 criteria: 10 full, 24 partial, 52 manual. Level A + AA scope (55 criteria): 9 full, 22 partial, 24 manual. (WCAG 2.2 removed 4.1.1 Parsing, so it is not counted.) A criterion with no automated finding is not a pass; every criterion needs manual review before a conformance claim.
-
-## Scope / non-goals
-
-- Not a headless crawler; focus/keyboard checks need a visible browser.
-- Firefox only. No Chrome/WebKit driver.
-- No screen-reader (NVDA/JAWS/VoiceOver) testing; directed to the manual checklist.
-- No content-quality heuristics (plain language, error-message quality); these are manual.
-- No monitoring or remediation; it observes and reports.
+Of the 55 level A + AA criteria, 9 are full, 22 partial and 24 manual. The coverage table in each report shows, per criterion, the number of findings, *no automated finding*, or *needs manual review*. A WCAG 2.2 AA conformance claim combines the automated findings with the completed manual checklist. See [docs/COVERAGE.md](docs/COVERAGE.md) for the full breakdown.
 
 ## License
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
-
-Concept and core mechanisms derived from the BeLibre `leak_inspector` privacy tool.

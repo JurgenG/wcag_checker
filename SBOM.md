@@ -36,7 +36,7 @@ lock with `pip freeze` for release audits.
 |---    |---       |---      |--- |
 | axe-core ruleset | ships inside `axe-selenium-python` | MPL-2.0 (axe-core 4.10.2) | The accessibility rules the tool runs. Injected into the live page and executed via `axe.run()`; the tool does not vendor its own copy. |
 
-The fork's `report/assets` (BeLibre logo, Twemoji font used for PDF export) have been removed: the WCAG HTML report carries inline CSS and no remote assets. Its only local references are the element-evidence PNGs it writes alongside itself under `screenshots/`.
+The HTML report uses inline CSS and loads no remote assets. Its only local references are the element screenshots it writes alongside itself under `screenshots/`.
 
 ## License posture
 
