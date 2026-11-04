@@ -27,10 +27,14 @@ import json
 from leak_inspector.wcag.manual_checklist import (
     NOTE,
     QUESTIONS,
+    SECTION_HEADING,
     build_checklist,
     questions_for,
+    render_html_section,
     render_json,
     render_markdown,
+    render_markdown_section,
+    render_text_section,
 )
 
 URLS = ["https://example.test/b", "https://example.test/a"]
@@ -50,12 +54,15 @@ class TestBuildChecklist:
         assert "1.1.1" not in ids  # also full
 
     def test_expected_counts(self) -> None:
-        # A + AA review scope: 27 manual + 19 partial = 46.
+        # A + AA review scope: 24 manual + 22 partial = 46. (1.2.1/1.2.2/
+        # 1.2.3/1.4.2 moved manual→partial once media + axe gave them
+        # automated candidate coverage; 4.1.3 moved partial→manual as it
+        # has no reliable detector. The total review set is unchanged.)
         criteria = build_checklist(URLS).criteria
         manual = [c for c in criteria if c.automatable == "manual"]
         partial = [c for c in criteria if c.automatable == "partial"]
-        assert len(manual) == 27
-        assert len(partial) == 19
+        assert len(manual) == 24
+        assert len(partial) == 22
         assert len(criteria) == 46
 
     def test_known_criteria_present(self) -> None:
@@ -78,7 +85,7 @@ class TestRenderMarkdown:
         assert "## https://example.test/a" in out
         assert "## https://example.test/b" in out
         # Each criterion is a heading tagged with its level and tier.
-        assert "### 1.2.1 Audio-only and Video-only (Prerecorded) (A · manual)" in out
+        assert "### 1.3.3 Sensory Characteristics (A · manual)" in out
         assert "### 2.4.3 Focus Order (A · partial)" in out
 
     def test_questions_render_as_checkboxes(self) -> None:
@@ -127,3 +134,27 @@ class TestQuestions:
         for cid, qs in QUESTIONS.items():
             assert qs, f"empty question list for {cid}"
             assert all(isinstance(q, str) and q.strip() for q in qs)
+
+
+class TestSectionRenderers:
+    def test_markdown_section_shifts_headings_and_drops_title(self) -> None:
+        out = render_markdown_section(build_checklist(URLS))
+        assert out.startswith(f"## {SECTION_HEADING}")
+        assert "### https://example.test/a" in out  # url one level deeper
+        assert "#### " in out  # criterion two levels deeper
+        assert "- [ ] " in out
+
+    def test_markdown_section_handles_no_pages(self) -> None:
+        out = render_markdown_section(build_checklist([]))
+        assert "No pages were recorded" in out
+
+    def test_text_section_has_heading_and_boxes(self) -> None:
+        out = render_text_section(build_checklist(URLS))
+        assert out.startswith(SECTION_HEADING)
+        assert "[ ] " in out
+
+    def test_html_section_is_collapsible_and_escaped(self) -> None:
+        out = render_html_section(build_checklist(["https://x/?a=1&b=2"]))
+        assert "<details class='mc'>" in out
+        assert "type='checkbox'" in out
+        assert "&amp;" in out  # url query escaped

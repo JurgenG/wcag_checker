@@ -20,10 +20,12 @@
 Wires the reused capture layer to the WCAG audit engines. It opens a
 visible Firefox, installs the audit hotkey (see :mod:`.capture.hotkey`),
 and on each press audits the page as it is rendered at that instant —
-axe-core plus the keyboard/focus checks — accumulating findings across
-every page the operator marks. When the window closes, it writes the
-report (JSON + text + Markdown + HTML) and the manual-review checklist to
-the output directory.
+axe-core plus the keyboard/focus, media, and reflow checks — accumulating
+findings across every page the operator marks. When the window closes, it
+writes the report (JSON + text + Markdown + HTML) and the manual-review
+checklist into a per-domain subdirectory of the output directory
+(``<out>/<host>/``), with a ``YYYYMMDDHHMM_`` timestamp on each filename so
+repeated audits of the same site do not overwrite one another.
 
 The hotkey is detected by polling: each loop tick runs one
 ``execute_script`` (via :class:`~.capture.hotkey.HotkeyWatcher`) that both
@@ -45,6 +47,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import urlparse
 
 from selenium.common.exceptions import WebDriverException
 
@@ -52,8 +55,12 @@ from .capture.driver import launch_driver
 from .capture.hotkey import DEFAULT_HOTKEY, HotkeyWatcher
 from .wcag import (
     axe_runner,
+    content,
     keyboard_nav,
     manual_checklist,
+    media,
+    pointers,
+    reflow,
     reporter,
     screenshot,
     text_view,
@@ -94,6 +101,30 @@ DEFAULT_FORMATS: tuple[str, ...] = ("html",)
 
 #: Accepted ``--format`` tokens (for the CLI's help / choices).
 FORMAT_CHOICES: tuple[str, ...] = (*_REPORT_FORMATS, JIRA_FORMAT, "all")
+
+
+def domain_slug(url: str) -> str:
+    """Return a filesystem-safe folder name derived from ``url``'s host.
+
+    The host (path and query dropped) is lowercased and any character
+    outside ``[a-z0-9._-]`` is replaced with ``-``; an empty host falls
+    back to ``"site"``. Used to give each audited domain its own
+    subdirectory under the output directory (e.g. ``belibre.be`` →
+    ``reports/belibre.be/``), so repeated runs never overwrite one another.
+    """
+    host = (urlparse(url).hostname or "").lower()
+    slug = "".join(c if (c.isalnum() or c in "._-") else "-" for c in host).strip("-")
+    return slug or "site"
+
+
+def _report_prefix() -> str:
+    """Return a per-run report-filename prefix, e.g. ``202607300858_``.
+
+    A local-time ``YYYYMMDDHHMM`` stamp (plus a trailing underscore) so each
+    run's reports sit beside earlier runs' in the same domain folder instead
+    of overwriting them. Impure: reads the wall clock.
+    """
+    return datetime.now().strftime("%Y%m%d%H%M") + "_"
 
 
 def parse_formats(spec: str) -> tuple[str, ...]:
@@ -140,15 +171,24 @@ def audit_page(
 ) -> list[Finding]:
     """Run both audit engines against the driver's current page.
 
-    Combines the axe-core audit (:mod:`.wcag.axe_runner`) and the
-    keyboard/focus checks (:mod:`.wcag.keyboard_nav`) into one finding
-    list, all labelled with ``url``. When ``screenshot_dir`` is given,
-    captures an element-level PNG for each finding into it
-    (:mod:`.wcag.screenshot`) while the page is still rendered. Impure:
-    drives the live browser and, with ``screenshot_dir``, writes PNGs.
+    Combines the axe-core audit (:mod:`.wcag.axe_runner`), the media
+    presence checks (:mod:`.wcag.media`), the manual-review pointers
+    (:mod:`.wcag.pointers`), the descriptive-text heuristics
+    (:mod:`.wcag.content`), the keyboard/focus checks
+    (:mod:`.wcag.keyboard_nav`), and the reflow check (:mod:`.wcag.reflow`)
+    into one finding list, all labelled with ``url``. When
+    ``screenshot_dir`` is given, captures an element-level PNG for each
+    finding into it (:mod:`.wcag.screenshot`) while the page is still
+    rendered. Impure: drives the live browser and, with ``screenshot_dir``,
+    writes PNGs. The reflow check runs last because it momentarily resizes
+    the viewport (and restores it), so it must not perturb the others.
     """
     findings = list(axe_runner.audit(driver, url))
+    findings += media.check_media(driver, url)
+    findings += pointers.check_pointers(driver, url)
+    findings += content.run_all(driver, url)
     findings += keyboard_nav.run_all(driver, url)
+    findings += reflow.check_reflow(driver, url)
     if screenshot_dir is not None:
         findings = screenshot.capture_findings(driver, findings, screenshot_dir)
     return findings
@@ -192,10 +232,17 @@ def run_session(
     ``headless`` runs without a visible window (a real desktop is still
     recommended for accurate focus behaviour). ``width``, if given, resizes
     the window to that pixel width for auditing a responsive/mobile layout.
+
+    Reports are written into a per-domain subdirectory of ``output_dir``
+    (named after the starting URL's host, e.g. ``reports/belibre.be/``) with
+    a ``YYYYMMDDHHMM_`` timestamp prefix on each filename, so repeated audits
+    of the same site accumulate side by side instead of overwriting.
+    ``SessionResult.output_dir`` is that subdirectory.
     """
+    site_dir = Path(output_dir) / domain_slug(target_url)
     findings: list[Finding] = []
     audited_urls: list[str] = []
-    screenshot_dir = Path(output_dir) / SCREENSHOT_DIRNAME
+    screenshot_dir = site_dir / SCREENSHOT_DIRNAME
     text_views: list[PageTextView] = []
     seen_view_urls: set[str] = set()
 
@@ -222,17 +269,18 @@ def run_session(
 
     generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     written = write_reports(
-        output_dir,
+        site_dir,
         findings,
         audited_urls,
         generated_at=generated_at,
         formats=formats,
         text_views=text_views,
+        filename_prefix=_report_prefix(),
     )
     return SessionResult(
         audited_urls=tuple(audited_urls),
         findings=findings,
-        output_dir=Path(output_dir),
+        output_dir=site_dir,
         written=written,
     )
 
@@ -259,8 +307,15 @@ def run_once(
 
     ``SessionResult.audited_urls`` holds the single URL the page settled
     on; when that differs from ``target_url`` a redirect occurred.
+
+    Reports are written into a per-domain subdirectory of ``output_dir``
+    (named after ``target_url``'s host, e.g. ``reports/belibre.be/``) with a
+    ``YYYYMMDDHHMM_`` timestamp prefix on each filename, so repeated audits
+    accumulate side by side. ``SessionResult.output_dir`` is that
+    subdirectory.
     """
-    screenshot_dir = Path(output_dir) / SCREENSHOT_DIRNAME
+    site_dir = Path(output_dir) / domain_slug(target_url)
+    screenshot_dir = site_dir / SCREENSHOT_DIRNAME
     with launch_driver(headless=headless, width=width) as launched:
         driver = launched.driver
         driver.get(target_url)
@@ -270,17 +325,18 @@ def run_once(
 
     generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     written = write_reports(
-        output_dir,
+        site_dir,
         findings,
         [audited_url],
         generated_at=generated_at,
         formats=formats,
         text_views=[view] if view is not None else [],
+        filename_prefix=_report_prefix(),
     )
     return SessionResult(
         audited_urls=(audited_url,),
         findings=findings,
-        output_dir=Path(output_dir),
+        output_dir=site_dir,
         written=written,
     )
 
@@ -372,6 +428,7 @@ def write_reports(
     formats: tuple[str, ...] = DEFAULT_FORMATS,
     title: str | None = None,
     text_views: Sequence[PageTextView] = (),
+    filename_prefix: str = "",
 ) -> dict[str, Path]:
     """Render and write the selected report ``formats`` to ``output_dir``.
 
@@ -384,8 +441,14 @@ def write_reports(
     it is the essential human-review artifact, not an alternate rendering
     of the findings. ``text_views`` (the per-page linearized reading views,
     see :mod:`.wcag.text_view`) are embedded into every written report as a
-    *Reading view* section. Creates ``output_dir`` if needed and returns a
-    name→path map. Pure output seam — no driver, no network.
+    *Reading view* section. ``filename_prefix`` is prepended to every
+    written basename (the report files, the ``jira/`` folder, and the
+    checklist) — e.g. ``"202607300858_"`` — so successive runs into the same
+    directory are kept side by side rather than overwriting each other;
+    the default empty prefix keeps the plain names. Screenshot links are
+    unaffected: they are relative to the report's own directory. Creates
+    ``output_dir`` if needed and returns a name→path map. Pure output seam
+    — no driver, no network.
     """
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -403,24 +466,27 @@ def write_reports(
         if fmt == JIRA_FORMAT:
             tickets = reporter.render_jira_tickets(document)
             if tickets:
-                jira_dir = out / "jira"
+                jira_dirname = f"{filename_prefix}jira"
+                jira_dir = out / jira_dirname
                 jira_dir.mkdir(parents=True, exist_ok=True)
                 for name, text in tickets.items():
                     path = jira_dir / name
                     path.write_text(text, encoding="utf-8")
-                    written[f"jira/{name}"] = path
+                    written[f"{jira_dirname}/{name}"] = path
         else:
             filename, render = _REPORT_FORMATS[fmt]
-            path = out / filename
+            out_name = f"{filename_prefix}{filename}"
+            path = out / out_name
             path.write_text(render(document), encoding="utf-8")
-            written[filename] = path
+            written[out_name] = path
 
     checklist = manual_checklist.build_checklist(urls, generated_at=generated_at)
-    checklist_path = out / "manual-checklist.md"
+    checklist_name = f"{filename_prefix}manual-checklist.md"
+    checklist_path = out / checklist_name
     checklist_path.write_text(
         manual_checklist.render_markdown(checklist), encoding="utf-8"
     )
-    written["manual-checklist.md"] = checklist_path
+    written[checklist_name] = checklist_path
     return written
 
 
@@ -448,6 +514,7 @@ __all__ = [
     "SessionResult",
     "audit_page",
     "capture_text_view",
+    "domain_slug",
     "parse_formats",
     "run_once",
     "run_session",

@@ -15,49 +15,72 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Tests for the full-page screenshot evidence gatherer.
+"""Tests for the cropped screenshot evidence gatherer.
 
-Hermetic: no browser. A fake driver models the two live calls — an
-``execute_script`` highlight (returns whether the selector matched) and a
-full-page screenshot (returns bytes, or raises to simulate refusal) — so
-the capture/dedup/skip/cleanup logic is exercised against real filesystem
-writes without a live page.
+Hermetic: no browser. A fake driver models the live calls the capture
+makes — an ``execute_script`` locate+highlight (returns element geometry
+when the selector matches, else ``None``), the BiDi
+``browsing_context.capture_screenshot`` clip capture (returns base64 PNG
+data, or raises to simulate refusal), and the ``execute_script``
+unhighlight (no argument) — so the capture/crop/dedup/skip/cleanup logic
+is exercised against real filesystem writes without a live page.
 """
 
 from __future__ import annotations
+
+import base64
 
 from leak_inspector.wcag import screenshot
 from leak_inspector.wcag.core import Finding
 from selenium.common.exceptions import WebDriverException
 
+#: Canned geometry a matched selector reports: a 50×70 element on a large
+#: page (well away from every edge, so the expanded crop is not capped).
+_GEOM = {"x": 100.0, "y": 200.0, "w": 50.0, "h": 70.0, "winW": 1000.0, "pageH": 2000.0}
+
+#: A minimal PNG signature the fake capture returns (base64-encoded, as BiDi
+#: delivers it).
+_PNG_BYTES = b"\x89PNG\r\n\x1a\n"
+
+
+class _FakeBiDi:
+    """Models ``driver.browsing_context`` — only the clip capture is used."""
+
+    def __init__(self, *, shot_ok: bool) -> None:
+        self._shot_ok = shot_ok
+        self.clips: list[dict] = []
+
+    def capture_screenshot(self, *, context, origin, clip):
+        if not self._shot_ok:
+            raise WebDriverException("clip screenshot refused")
+        self.clips.append(clip)
+        return base64.b64encode(_PNG_BYTES).decode("ascii")
+
 
 class _FakeDriver:
-    """Models the highlight + full-page-screenshot calls the capture makes.
+    """Models the locate+highlight, clip-capture, and unhighlight calls.
 
-    ``present`` is the set of selectors that "match" an element. The
-    highlight script (called with the selector as an argument) returns
-    whether it matched; the unhighlight script (no argument) is counted.
-    ``shot_ok=False`` makes the screenshot call raise.
+    ``present`` is the set of selectors that "match" an element; a matched
+    selector reports :data:`_GEOM`. The locate+highlight script (called with
+    the selector as an argument) returns the geometry dict or ``None``; the
+    unhighlight script (no argument) is counted. ``shot_ok=False`` makes the
+    BiDi capture raise.
     """
 
     def __init__(self, present, *, shot_ok: bool = True) -> None:
         self._present = set(present)
-        self._shot_ok = shot_ok
         self.highlighted: list[str] = []
         self.unhighlights = 0
+        self.current_window_handle = "ctx-1"
+        self.browsing_context = _FakeBiDi(shot_ok=shot_ok)
 
     def execute_script(self, script: str, *args):
-        if args:  # highlight — argument is the CSS selector
+        if args:  # locate+highlight — argument is the CSS selector
             selector = args[0]
             self.highlighted.append(selector)
-            return selector in self._present
+            return dict(_GEOM) if selector in self._present else None
         self.unhighlights += 1  # unhighlight — no argument
         return None
-
-    def get_full_page_screenshot_as_png(self) -> bytes:
-        if not self._shot_ok:
-            raise WebDriverException("full-page screenshot refused")
-        return b"\x89PNG\r\n\x1a\n"
 
 
 def _finding(selector: str | None, url: str = "https://x/a") -> Finding:
@@ -70,7 +93,31 @@ def _finding(selector: str | None, url: str = "https://x/a") -> Finding:
     )
 
 
-def test_captures_full_page_and_sets_relative_path(tmp_path) -> None:
+class TestExpandedBox:
+    def test_expands_by_own_size_when_uncapped(self) -> None:
+        # 50×70 element, far from every edge → 150×210 centred on it.
+        box = screenshot._expanded_box(100, 200, 50, 70, 1000, 2000)
+        assert box == {"x": 50, "y": 130, "width": 150, "height": 210}
+
+    def test_caps_at_top_left_corner(self) -> None:
+        # Element at the origin: left/top cannot go negative.
+        box = screenshot._expanded_box(0, 0, 50, 70, 1000, 2000)
+        assert box["x"] == 0 and box["y"] == 0
+        assert box["width"] == 100 and box["height"] == 140  # only the right/below halves
+
+    def test_width_caps_to_window_but_height_runs_the_page(self) -> None:
+        # A tall element flush against the window's right edge: the width
+        # caps to the window (win_w=1000) while the height is free to extend
+        # down the page (page_h=2000), not limited to the window.
+        box = screenshot._expanded_box(940, 1900, 50, 300, 1000, 2000)
+        assert box["x"] == 890  # right caps to win_w=1000 → width 110
+        assert box["width"] == 110
+        # height expands by 300 above and below (→ 900) uncapped by the window;
+        # only the page bottom (2000) trims it: top 1600 … bottom 2000.
+        assert box["y"] == 1600 and box["height"] == 400
+
+
+def test_captures_cropped_region_and_sets_relative_path(tmp_path) -> None:
     out = tmp_path / "screenshots"
     driver = _FakeDriver({".btn"})
 
@@ -79,7 +126,13 @@ def test_captures_full_page_and_sets_relative_path(tmp_path) -> None:
     path = result[0].screenshot
     assert path is not None
     assert path.startswith("screenshots/") and path.endswith(".png")
-    assert (tmp_path / path).exists()
+    saved = tmp_path / path
+    assert saved.exists()
+    assert saved.read_bytes() == _PNG_BYTES  # base64 from BiDi decoded to bytes
+    # The clip sent to BiDi is the expanded 150×210 box for the 50×70 element.
+    assert driver.browsing_context.clips == [
+        {"type": "box", "x": 50.0, "y": 130.0, "width": 150.0, "height": 210.0}
+    ]
     assert driver.unhighlights == 1  # overlay cleaned up after the shot
 
 

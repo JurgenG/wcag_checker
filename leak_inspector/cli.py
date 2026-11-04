@@ -154,7 +154,7 @@ def _run_interactive(args: argparse.Namespace, formats: tuple[str, ...]) -> int:
         f"Audited {len(result.audited_urls)} page(s); "
         f"{len(result.findings)} finding(s)."
     )
-    print(f"Reports written to {result.output_dir}/")
+    _print_written(result)
     print("Reminder: a clean automated run does not imply WCAG 2.2 conformance.")
     return 0
 
@@ -170,9 +170,29 @@ def _run_once(args: argparse.Namespace, formats: tuple[str, ...]) -> int:
     if audited != args.url:
         print(f"Note: {args.url} redirected to {audited}; audited that.")
     print(f"Audited {audited}; {len(result.findings)} finding(s).")
-    print(f"Reports written to {result.output_dir}/")
+    _print_written(result)
     print("Reminder: a clean automated run does not imply WCAG 2.2 conformance.")
     return 0
+
+
+def _print_written(result: session.SessionResult) -> None:
+    """Print the exact report files this run wrote, with their full paths.
+
+    Names the concrete files (not just the directory) so the operator opens
+    this run's freshly written, timestamped report rather than a leftover
+    from an earlier run in the same domain folder. JIRA tickets live in a
+    subfolder, so that folder is summarized once instead of listing every
+    ticket.
+    """
+    print(f"Reports written to {result.output_dir}/")
+    jira_dirs: set[str] = set()
+    for name, path in result.written.items():
+        if "/" in name:
+            jira_dirs.add(name.split("/", 1)[0])
+        else:
+            print(f"  {path}")
+    for dirname in sorted(jira_dirs):
+        print(f"  {result.output_dir / dirname}/ (JIRA tickets)")
 
 
 if __name__ == "__main__":

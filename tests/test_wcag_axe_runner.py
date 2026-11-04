@@ -225,3 +225,34 @@ class TestCriterionOwnership:
     def test_tag_mapper_itself_is_unchanged(self) -> None:
         # The drop lives in normalization, not the mechanical tag mapper.
         assert criteria_from_tags(["wcag258"]) == ["2.5.8"]
+
+class TestExperimentalRules:
+    def test_run_options_enable_label_in_name_and_are_json(self) -> None:
+        import json
+
+        from leak_inspector.wcag.axe_runner import _run_options
+
+        opts = json.loads(_run_options())  # must be valid JSON (true, not True)
+        assert opts["runOnly"]["type"] == "tag"
+        assert "wcag2aa" in opts["runOnly"]["values"]
+        assert opts["rules"]["label-content-name-mismatch"]["enabled"] is True
+
+    def test_label_in_name_violation_forced_to_needs_review(self) -> None:
+        # The experimental rule reports a "serious" violation, but because
+        # axe itself flags it experimental we downgrade it to needs-review.
+        results = {
+            "violations": [
+                {
+                    "id": "label-content-name-mismatch",
+                    "impact": "serious",
+                    "tags": ["wcag21a", "wcag253"],
+                    "help": "Visible label must be in the accessible name",
+                    "helpUrl": "https://example/l",
+                    "nodes": [{"target": ["button"], "failureSummary": "mismatch"}],
+                }
+            ],
+            "incomplete": [],
+        }
+        out = normalize_results(results, URL)
+        assert [f.criterion for f in out] == ["2.5.3"]
+        assert out[0].severity == "needs-review"

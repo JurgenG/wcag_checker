@@ -113,8 +113,8 @@ class TestBuildReport:
         tier_total = sum(summary.by_tier.values())
         # Every in-scope criterion falls in exactly one tier bucket.
         assert tier_total == summary.total_in_scope
-        # AAA criteria are excluded, so the scope is well below all 87.
-        assert summary.total_in_scope < 87
+        # AAA criteria are excluded, so the scope is well below all 86.
+        assert summary.total_in_scope < 86
 
     def test_generated_at_passthrough(self, findings: list[Finding]) -> None:
         doc = build_report(findings, generated_at="2026-07-09T10:00:00Z")
@@ -205,12 +205,12 @@ def _fi(criterion, severity, *, impact=None, selector="a", url=URL):
 
 
 class TestPriority:
-    # 4.1.2 = level A, 1.4.3 = AA, 3.3.2 = A, 2.4.7 = AA (per the registry).
+    # 4.1.2 = level A, 1.4.3 = AA, 3.3.2 = A, 2.4.7 = A (per the registry).
     def test_band_from_severity_and_level(self) -> None:
         doc = build_report([
             _fi("1.4.3", "error"),          # AA error  -> P2
             _fi("4.1.2", "error"),          # A  error  -> P1
-            _fi("2.4.7", "needs-review"),   # AA review -> P4
+            _fi("2.4.7", "needs-review"),   # review    -> P4 (level-independent)
             _fi("3.3.2", "warning"),        # A  warning-> P3
         ])
         bands = {r.criterion.id: r.priority.key for r in doc.criteria}
@@ -281,3 +281,65 @@ class TestJiraPriority:
         body = next(iter(tickets.values()))
         assert "### https://x/one" in body
         assert "### https://x/two" in body
+
+
+class TestCoverage:
+    def test_lists_every_in_scope_criterion(self, findings: list[Finding]) -> None:
+        doc = build_report(findings)
+        # One row per WCAG 2.2 A + AA criterion (matches the summary count).
+        assert len(doc.coverage) == doc.summary.total_in_scope
+        ids = {row.criterion.id for row in doc.coverage}
+        assert "1.4.3" in ids and "3.3.1" in ids
+
+    def test_run_status_reflects_findings_and_tier(self) -> None:
+        # 1.4.3 (full) has a finding; 4.1.2 (full) has none; 3.3.1 is manual.
+        doc = build_report([_f("1.4.3", "error")])
+        by_id = {r.criterion.id: r for r in doc.coverage}
+        assert by_id["1.4.3"].run_status == "findings"
+        assert by_id["1.4.3"].finding_count == 1
+        assert by_id["4.1.2"].run_status == "clean-auto"
+        assert by_id["3.3.1"].run_status == "manual"
+
+    def test_only_a_and_aa_included(self) -> None:
+        doc = build_report([])
+        assert all(row.criterion.level in ("A", "AA") for row in doc.coverage)
+
+    def test_ordered_by_criterion_number(self) -> None:
+        doc = build_report([])
+        ids = [row.criterion.id for row in doc.coverage]
+        assert ids == sorted(ids, key=lambda i: tuple(int(p) for p in i.split(".")))
+
+    def test_json_carries_coverage(self, findings: list[Finding]) -> None:
+        data = json.loads(render_json(build_report(findings)))
+        assert data["coverage"]
+        row = next(r for r in data["coverage"] if r["id"] == "1.4.3")
+        assert row["run_status"] == "findings" and row["automatable"] == "full"
+
+    def test_html_has_coverage_table_and_manual_row(self) -> None:
+        out = render_html(build_report([_f("1.4.3", "error")]))
+        assert "Coverage — all WCAG 2.2 A + AA criteria" in out
+        assert "needs manual review" in out  # a manual-tier criterion row
+        assert "no automated finding" in out  # a clean full-tier criterion
+
+    def test_markdown_and_text_have_coverage(self, findings: list[Finding]) -> None:
+        doc = build_report(findings)
+        assert "## Coverage — all WCAG 2.2 A + AA criteria" in render_markdown(doc)
+        assert "Coverage — all WCAG 2.2 A + AA criteria" in render_text(doc)
+
+
+class TestEmbeddedChecklist:
+    def test_html_embeds_collapsible_checklist(self, findings: list[Finding]) -> None:
+        out = render_html(build_report(findings))
+        assert "Manual-review checklist" in out
+        assert "<details class='mc'>" in out
+        assert "type='checkbox'" in out
+
+    def test_markdown_embeds_checklist_with_questions(
+        self, findings: list[Finding]
+    ) -> None:
+        out = render_markdown(build_report(findings))
+        assert "## Manual-review checklist" in out
+        assert "- [ ] " in out
+
+    def test_text_embeds_checklist(self, findings: list[Finding]) -> None:
+        assert "Manual-review checklist" in render_text(build_report(findings))

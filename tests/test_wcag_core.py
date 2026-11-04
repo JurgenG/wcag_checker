@@ -31,8 +31,10 @@ from leak_inspector.wcag.core import (
 )
 
 
-def test_registry_has_all_87_wcag22_criteria():
-    assert len(CRITERIA_REGISTRY) == WCAG_22_CRITERIA_COUNT == 87
+def test_registry_has_all_86_wcag22_criteria():
+    # WCAG 2.2 has 86 SC — 4.1.1 Parsing was removed and must not appear.
+    assert len(CRITERIA_REGISTRY) == WCAG_22_CRITERIA_COUNT == 86
+    assert "4.1.1" not in {c.id for c in CRITERIA_REGISTRY}
 
 
 def test_criterion_ids_are_unique():
@@ -113,7 +115,7 @@ def test_tier_distribution_is_honest():
     full = tiers.count("full")
     partial = tiers.count("partial")
     manual = tiers.count("manual")
-    assert full + partial + manual == 87
+    assert full + partial + manual == 86
     # Manual must dominate; full must never be the plurality.
     assert manual > full + partial
     assert full < manual

@@ -83,7 +83,7 @@ importable package is still named `leak_inspector` during conversion; the
 user-facing command is `wcag-checker`).
 
 - **`core.py`** — driver-free dataclasses (`WcagCriterion`, `Finding`)
-  and `CRITERIA_REGISTRY`, all 87 WCAG 2.2 success criteria tagged with
+  and `CRITERIA_REGISTRY`, all 86 WCAG 2.2 success criteria tagged with
   level (A/AA/AAA) and automatability tier. The single source of truth
   for coverage claims. Imports nothing browser- or driver-specific.
 - **`axe_runner.py`** — wraps the axe-core engine via
@@ -120,8 +120,9 @@ Clean-boundary rules:
 
 ## WCAG methodology & automatability tiers
 
-WCAG 2.2 defines 87 success criteria. Empirically ~30% are fully
-automatable, ~10% partially, and ~60% require human judgement.
+WCAG 2.2 defines 86 success criteria (4.1.1 Parsing was removed).
+Empirically ~30% are fully automatable, ~10% partially, and ~60% require
+human judgement.
 `core.py` tags every criterion with one tier:
 
 - **`full`** — a tool can decide the automatable substance on its own

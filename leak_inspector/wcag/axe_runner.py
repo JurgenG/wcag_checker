@@ -44,6 +44,7 @@ to the capture/session layer.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from .core import CRITERIA_BY_ID, Finding, Severity
@@ -65,13 +66,33 @@ AA_TAG_SET: tuple[str, ...] = (
 #: ``"warning"`` (see :data:`~.core.Severity`).
 _ERROR_IMPACTS = frozenset({"critical", "serious"})
 
-#: Criteria that a dedicated :mod:`.keyboard_nav` check owns end to end;
-#: axe results mapping to them are dropped so the criterion is reported
-#: by exactly one engine. 2.5.8 Target Size (Minimum) is measured by
+#: axe rules that are disabled by default (axe marks them *experimental*)
+#: but reliably map to a WCAG criterion this tool wants. We enable them
+#: explicitly. ``label-content-name-mismatch`` decides **2.5.3 Label in
+#: Name** — a control whose visible text is not contained in its
+#: accessible name — using axe's own accessible-name computation.
+ENABLED_EXPERIMENTAL_RULES: tuple[str, ...] = ("label-content-name-mismatch",)
+
+#: Results from these rules are reported ``needs-review`` regardless of the
+#: violation impact axe assigns: they come from rules axe itself still
+#: flags experimental, so a human confirms rather than the tool asserting a
+#: definite failure.
+_RULES_FORCED_REVIEW = frozenset(ENABLED_EXPERIMENTAL_RULES)
+
+#: Criteria that a dedicated non-axe check owns end to end; axe results
+#: mapping to them are dropped so the criterion is reported by exactly one
+#: engine. 2.5.8 Target Size (Minimum) is measured by
 #: :func:`.keyboard_nav.check_target_size` (24×24 CSS-px with the inline
 #: exception); axe's own ``target-size`` rule (tagged ``wcag258``) would
-#: otherwise double-report it if enabled.
-_CRITERIA_OWNED_ELSEWHERE = frozenset({"2.5.8"})
+#: otherwise double-report it if enabled. 1.2.1 and 1.2.3 are owned by
+#: :func:`.media.check_media`; axe's ``audio-caption`` rule (1.2.1) is
+#: deprecated and does not run, and axe has no 1.2.3 rule, so this is
+#: latent today but keeps a future axe release from double-reporting.
+#: 1.2.2 and 1.4.2 stay with axe — its ``video-caption`` and
+#: ``no-autoplay-audio`` rules decide those for native elements. (No
+#: conflict with :mod:`.media`, which raises 1.2.2 only for cross-origin
+#: video *embeds* axe cannot see — a disjoint set of elements.)
+_CRITERIA_OWNED_ELSEWHERE = frozenset({"1.2.1", "1.2.3", "2.5.8"})
 
 
 def audit(driver: Any, url: str | None = None) -> list[Finding]:
@@ -94,16 +115,32 @@ def audit(driver: Any, url: str | None = None) -> list[Finding]:
 def run_axe(driver: Any) -> dict[str, Any]:
     """Inject axe-core into ``driver`` and return its raw results dict.
 
-    Restricts the run to :data:`AA_TAG_SET`. Imports
-    ``axe-selenium-python`` lazily so the pure normalization helpers in
-    this module stay importable — and testable — without a browser stack
-    installed. Side effect: executes JavaScript on the live driver.
+    Restricts the run to :data:`AA_TAG_SET` and additionally enables the
+    :data:`ENABLED_EXPERIMENTAL_RULES`. Imports ``axe-selenium-python``
+    lazily so the pure normalization helpers in this module stay importable
+    — and testable — without a browser stack installed. Side effect:
+    executes JavaScript on the live driver.
     """
     from axe_selenium_python import Axe
 
     axe = Axe(driver)
     axe.inject()
-    return axe.run(options={"runOnly": {"type": "tag", "values": list(AA_TAG_SET)}})
+    return axe.run(options=_run_options())
+
+
+def _run_options() -> str:
+    """Build the ``axe.run`` options as a JSON string.
+
+    The ``axe-selenium-python`` wrapper interpolates ``options`` into the
+    injected script with ``%s``, so a Python ``dict`` would emit ``True``
+    (invalid JS); a JSON string emits ``true``. Restricts the run to the
+    AA tag set and enables the experimental rules we rely on.
+    """
+    options = {
+        "runOnly": {"type": "tag", "values": list(AA_TAG_SET)},
+        "rules": {rule: {"enabled": True} for rule in ENABLED_EXPERIMENTAL_RULES},
+    }
+    return json.dumps(options)
 
 
 def normalize_results(results: dict[str, Any], url: str) -> list[Finding]:
@@ -137,8 +174,11 @@ def _findings_for_result(
         return []
 
     impact = result.get("impact")
+    force_review = result.get("id") in _RULES_FORCED_REVIEW
     severity: Severity = (
-        "needs-review" if incomplete else _impact_to_severity(impact)
+        "needs-review"
+        if incomplete or force_review
+        else _impact_to_severity(impact)
     )
     nodes = result.get("nodes") or ({},)
     findings: list[Finding] = []

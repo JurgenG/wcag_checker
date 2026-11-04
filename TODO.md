@@ -1,186 +1,95 @@
 # TODO
 
-Task queue for converting the `leak_inspector` privacy-tool fork into
-`wcag-checker`, a WCAG 2.2 AA accessibility auditor. Built in milestone
-order; a clean automated run never implies conformance.
-
-## Session state — resume here (last worked 2026-07-09)
-
-- **Branch:** `feature/named-csv` (off `main`). `wcag-batch` now accepts a
-  two-column `name,website` CSV (e.g. the municipalities dataset, header
-  skipped) as well as the one-URL-per-line format. `read_urls` returns
-  `(name, url)` pairs (URL field auto-detected, so column order is free);
-  the name labels the site in the summary (`_site_label`) and titles its
-  per-site report via a new `title` threaded through
-  `write_reports` → `build_report` → `ReportDocument` and rendered in all
-  formats. Folder slug stays URL-host-based. Verified live on the real
-  municipalities.csv (496 rows) with a 2-site run. **187 tests pass.**
-- (previous, merged to `main`) Report UX overhaul
-  so priority is clear (goal: Belgian gov sites reaching WCAG 2.2 AA;
-  reports must help devs via jira-tickets and PMs via md/html).
-  Preceding merged work on `main`: polled `f9` hotkey (CSP-immune),
-  `--format` selection + `jira-tickets` format.
-- **This branch — priority model:** `Finding.impact` now carries axe's
-  `critical/serious/moderate/minor`. `reporter.Priority` bands (P1
-  Critical = A error, P2 High = AA error, P3 Medium = warning, P4 Review =
-  needs-review only); `build_report` assigns a band per criterion and
-  sorts worst-first (band → impact → occurrences); `CoverageSummary`
-  gained `by_priority`.
-- **Renderers:** HTML/MD lead with a scorecard + **priority overview**
-  table and group findings by band (HTML has colored P-pills + an Impact
-  column); JIRA tickets carry the band in title/`Priority`/labels, type
-  P4 as triage (not a bug), and group elements by page. JSON adds
-  `priority` + per-finding `impact` + `summary.by_priority`.
-- **Tests:** full suite green — **183 passing** (`TestPriority`,
-  `TestJiraPriority` in `test_wcag_reporter.py`; axe impact carried).
-  HTML redesign eyeballed via a rendered screenshot on publiq.be.
-- **Next build step:** nothing queued.
-- **Env note:** venv at `.venv`; runtime deps are `selenium` +
-  `axe-selenium-python` (`pip install -e .` pulls them in).
+Task queue for `wcag-checker`, a WCAG 2.2 AA accessibility auditor forked
+from the `leak_inspector` privacy tool. A clean automated run never
+implies conformance.
 
 ## Done
 
-- [x] STEP-0 inspection of the fork (driver, packaging, conventions,
-      the reusable hotkey/screenshot mechanism, the report shape).
-- [x] `git init` + baseline commit of the untouched fork, then a
-      `wcag-conversion` working branch (deletions are recoverable).
-- [x] `wcag/core.py` — `WcagCriterion` + `Finding` dataclasses and the
-      full 87-criterion WCAG 2.2 registry, each tagged with an
-      automatability tier (`full` / `partial` / `manual`). Driver-free.
-- [x] `tests/test_wcag_core.py` — pins the registry (count, unique ids,
-      valid levels/tiers, seed-tier anchors, honest tier distribution).
-- [x] Documentation rewrite for the new project: `README.md`,
-      `CLAUDE.md`, `INSTALL.md`, `PROJECT.md`, `SBOM.md`, `TODO.md`,
-      `docs/`.
+### Foundations & conversion
 
-## Build queue
+- WCAG 2.2 criteria registry (`wcag/core.py`) — `WcagCriterion` +
+  `Finding` dataclasses, each criterion tagged with an automatability
+  tier (`full` / `partial` / `manual`). Driver-free single source of
+  truth for coverage claims.
+- Registry corrections for WCAG 2.2 fidelity — dropped 4.1.1, 2.4.7 → A,
+  4.1.3 → manual.
+- Removed the entire privacy pipeline (tracker `modules/`, `analysis/`,
+  `enrichment/`, `dns_posture/`, `http_posture/`, `cms/`, privacy
+  `report/`, top-level `cli.py`/`__main__.py`/`signals.py`/`impact.py`,
+  `cname_provider.py`, `bulk-tool/` scanner) and repointed stale
+  docstrings; kept `capture/`, `bundle/`, `events.py`, `safe_net.py` and
+  `bulk-tool/datasets/`.
+- Packaging pass (`pyproject.toml`) — distribution renamed to
+  `wcag-checker`, `requires-python >=3.12`, added `axe-selenium-python`,
+  dropped unused deps and the PDF/weasyprint group.
+- Documentation — `README.md`, `CLAUDE.md`, `INSTALL.md`, `PROJECT.md`,
+  `SBOM.md`, `docs/` rewritten for the new project.
 
-- [x] `wcag/axe_runner.py` — wraps `axe-selenium-python`: injects
-      axe-core, runs the AA tag set (`wcag2a`, `wcag2aa`, `wcag21a`,
-      `wcag21aa`, `wcag22aa`), normalizes violations + incomplete results
-      into `Finding` objects via the criteria registry (axe `wcag*` tags
-      → dotted ids). Takes the driver as-is; never owns the session.
-      Non-WCAG (best-practice) results are dropped, not mislabelled.
-      Hermetic tests in `tests/test_wcag_axe_runner.py`.
-- [x] `tools/audit_page.py` — throwaway runner (launch Firefox →
-      navigate → axe audit → print by criterion) to exercise
-      `axe_runner` on a live page before the session runner exists.
-      Remove once the CLI lands.
-- [x] `wcag/reporter.py` — pure build-once/render-many: `build_report`
-      folds findings into a `ReportDocument` (grouped by criterion +
-      registry-derived `CoverageSummary`); `render_json` (canonical
-      `results.json`), `render_text`, `render_markdown`, `render_html`
-      (self-contained, escaped) render it. Every format carries the
-      coverage summary + the "clean run ≠ conformance" disclaimer; no
-      criterion is ever reported as a pass. Hermetic tests in
-      `tests/test_wcag_reporter.py`. Wired into `tools/audit_page.py`
-      (`--out` writes all four formats).
-- [x] `wcag/keyboard_nav.py` — the focus/keyboard checks axe skips. Each
-      splits into an impure gatherer (`check_*`, drives the live driver)
-      and a pure evaluator (`evaluate_*`, canned data → `list[Finding]`);
-      all emit `needs-review` candidates (partial-tier), never a pass.
-      Hermetic good/bad fixtures in `tests/test_wcag_keyboard_nav.py`;
-      gatherers live-smoked on publiq.be. Wired into `run_all` +
-      `tools/audit_page.py`.
-  - [x] `check_focus_visible` — 2.4.7 / 2.4.11 (style diff on focus +
-        elementFromPoint obscuring)
-  - [x] `check_no_keyboard_trap` — 2.1.2 (Tab-press sequence, stuck-run
-        detection)
-  - [x] `check_tab_order` — 2.4.3 (positive-tabindex detection)
-  - [x] `check_target_size` — 2.5.8 (24×24 CSS-px minimum, inline
-        exception)
-  - [x] Reconcile 2.5.8 with axe — `keyboard_nav` owns 2.5.8; `axe_runner`
-        now drops any axe result mapping to it
-        (`_CRITERIA_OWNED_ELSEWHERE`), so it can be reported by only one
-        engine. Verified axe-core 4.10.2 ships `target-size` disabled by
-        default (tags `wcag22aa`/`wcag258`), so the collision was latent;
-        the drop is engine-agnostic and holds if a future axe enables it.
-        Tests in `tests/test_wcag_axe_runner.py`.
-- [x] `wcag/manual_checklist.py` — pure build-once/render-many:
-      `build_checklist` selects the in-scope manual + partial criteria (46
-      = 27 manual + 19 partial) and pairs them with the audited routes;
-      `render_markdown` (`manual-checklist.md`, checkboxes grouped per
-      page by tier) and `render_json` render it. Not a test runner — emits
-      review tasks, never pass/fail. Hermetic tests in
-      `tests/test_wcag_manual_checklist.py`; wired into
-      `tools/audit_page.py --out`.
-- [x] Session runner + `wcag-checker` CLI — `leak_inspector/session.py`
-      reuses the capture driver + the new BiDi `Ctrl+Alt+A` audit hotkey
-      (`capture/bidi.py`) to run a live per-page audit on each keypress,
-      accumulating findings in memory and writing all reports +
-      `results.json` + `manual-checklist.md` on window close.
-      `leak_inspector/cli.py` is the `wcag-checker` console entry point.
-      The hotkey callback only enqueues; all WebDriver calls run on the
-      main thread. Hermetic tests for the audit loop (fake driver) and
-      the report-writing seam (tmp_path) + CLI wiring in
-      `tests/test_wcag_session.py`; full chain live-smoked.
-  - [x] Per-finding screenshots — `wcag/screenshot.py` captures an
-        element-level PNG (the snippet with the issue) for each finding
-        that has a selector, into `<out>/screenshots/`, deduping by
-        `(url, selector)` so an element failing several criteria is shot
-        once. `Finding.screenshot` carries the report-relative path; the
-        reporter surfaces it (evidence field in JSON, thumbnail column in
-        HTML, links in text/Markdown). Captured live in `audit_page`
-        right after the audits, before navigation. Hermetic tests
-        (`tests/test_wcag_screenshot.py`) with a fake driver + the
-        `audit_page` wiring in `tests/test_wcag_session.py`; live-smoked
-        on publiq.be (86 findings, 84 PNGs, all HTML links resolve).
-        Wired into `tools/audit_page.py --out` too.
+### Automated checks
 
-## Final cleanup
+- axe-core wrapper (`wcag/axe_runner.py`) — runs the AA tag set, maps
+  axe `wcag*` tags to dotted ids, normalizes violations + incomplete
+  into `Finding`s, drops non-WCAG/best-practice results and criteria
+  owned elsewhere.
+- Keyboard/focus checks axe skips (`wcag/keyboard_nav.py`) — focus
+  visibility (2.4.7 / 2.4.11), keyboard traps (2.1.2), tab order
+  (2.4.3), target size (2.5.8, reconciled so only one engine reports it).
+  Each check splits into an impure gatherer + pure evaluator.
+- Media checks (`wcag/media.py`) — inventories native `<audio>`/`<video>`
+  (stating the caption/subtitle/description `<track>`s found) for 1.2.1 /
+  1.2.3, and flags un-auditable YouTube/Vimeo embeds (1.2.2 + 1.2.3) and
+  other iframes (1.2.1); all `needs-review`, each with a screenshot.
+- Manual-review pointers (`wcag/pointers.py`) — locates the concrete
+  elements behind otherwise-manual criteria and points the reviewer at
+  them (`needs-review`, with screenshots): 4.1.3 live regions, 3.3.8
+  password fields + CAPTCHA, 2.4.5 search/nav/sitemap, 3.2.6 help/contact.
+- Descriptive-text heuristics (`wcag/content.py`) — 2.4.4 generic link
+  text and 2.4.6 empty headings, both `needs-review`.
+- Reflow (`wcag/reflow.py`) — true 320 CSS-px viewport via BiDi,
+  horizontal-overflow flag, operator viewport restored afterwards.
 
-- [x] Remove the whole privacy pipeline: tracker `modules/`,
-      `analysis/`, `enrichment/`, `dns_posture/`, `http_posture/`,
-      `cms/`, the privacy `report/` content, top-level `cli.py`,
-      `__main__.py`, `signals.py`, `impact.py`, `cname_provider.py`, and
-      their ~226 tests (kept `capture/`, `bundle/`, `events.py`,
-      `safe_net.py`, `wcag/` and their tests — 305 tests still green).
-- [x] Privacy-removal loose ends:
-  - `bundle/reader.py` — removed the dead `enrichment()` property (it
-    imported the deleted `..enrichment.artifact`) and its now-orphaned
-    `_MAX_ENRICHMENT_BYTES` cap. No callers/tests.
-  - stale docstrings repointed off deleted modules: `bundle/__init__.py`
-    (dropped the `analysis` reference), `safe_net.py` (was documented
-    against the deleted `cms`/`http_posture` probes; now describes its
-    real consumer, `capture/page_source.py`), and one now-false
-    "used by the bulk-tool runner" line in `capture/recorder.py`.
-  - `bulk-tool/` — deleted the broken privacy scanner code
-    (`run.py`, `overview.py`, `make_score_scatter.py`,
-    `rerender_overview.py`); **kept** `bulk-tool/datasets/` (domain-list
-    CSVs) for a possible future WCAG bulk-audit mode.
-- [x] `pyproject.toml` packaging pass: added `axe-selenium-python>=3.0`,
-      raised `requires-python` to `>=3.12` (dropped the 3.10/3.11
-      classifiers), dropped `maxminddb` and `pillow` (imported nowhere)
-      and the `pdf`/`weasyprint` optional group, removed the stale
-      `report/assets` package-data. Renamed the distribution to
-      `wcag-checker` (import package dir stays `leak_inspector/`) and
-      rewrote the description/keywords/classifiers for WCAG. `tldextract`
-      / `dnspython` are **kept** — `capture/recorder.py` (+ `capture/dns.py`)
-      still use them and are exercised by `tests/test_capture_*`. README +
-      INSTALL install steps and SBOM.md dependency table updated to match.
-- [x] Final README / SBOM pass — README reframed off "mid-build" (every
-      part now works), report-contents intro corrected, and the roadmap
-      updated (core complete; only a possible `bulk-tool/` batch-audit
-      mode noted). SBOM was already current from the packaging pass
-      (verified: no stale pillow/weasyprint/maxminddb/PDF references).
+### Manual-review aids
 
-## Additional features
-- [x] Step-by-step questions for a human manual check of a page —
-      `wcag/manual_checklist.py` now carries a `QUESTIONS` map (ordered,
-      concrete review questions per in-scope manual/partial criterion,
-      with applicability gates). `render_markdown` renders each criterion
-      as a heading with its questions as checkboxes, per page;
-      `render_json` adds a `questions` array. A completeness test pins
-      that the question set exactly matches the review criteria (no gaps,
-      no drift). Tests in `tests/test_wcag_manual_checklist.py`.
-- [x] Batch-audit mode (`wcag-batch`) — `leak_inspector/batch.py` +
-      `cli_batch.py` audit a plain-text URL list (one per line), reusing
-      one Firefox and running the `--once` flow per site into
-      `<out>/<site>/` (full report set + screenshots). A failing site is
-      recorded (single-line error) and the run continues; an aggregate
-      `summary.{json,md,html}` gives one row per site (findings by
-      severity or failure) linking to each per-site report. `--limit`
-      caps large lists; visible by default (`--headless` to hide). Reads
-      the `bulk-tool/datasets/*/domains.csv` example lists. Hermetic tests
-      in `tests/test_batch.py`; live-smoked on the `tinyset` dataset
-      (2 audited, 1 DNS-failure recorded).
+- Manual checklist (`wcag/manual_checklist.py`) — selects in-scope
+  manual/partial criteria, pairs them with audited routes, and renders
+  concrete step-by-step review questions per criterion (Markdown + JSON),
+  with a completeness test pinning questions to criteria.
+- Reading view (`wcag/text_view.py`) — linearized accessible-name reading
+  view of the live page, embedded in every report as a review aid (no
+  pass/fail claim).
+- Plaintext rendering — plaintext view included in reports to validate
+  screen-reader performance (needs manual check).
+
+### Reporting
+
+- Reporter (`wcag/reporter.py`) — pure build-once/render-many: folds
+  findings into a `ReportDocument` grouped by criterion + coverage
+  summary; renders JSON (canonical), text, Markdown, HTML. Every format
+  carries the coverage summary and the "clean run ≠ conformance"
+  disclaimer.
+- Priority-forward reports — `Finding.impact` carries axe severity;
+  `Priority` bands (P1–P4) sort findings worst-first; scorecard +
+  priority-overview table; `jira-tickets` format with band in
+  title/priority/labels.
+- `--format` selection.
+- Per-finding screenshots (`wcag/screenshot.py`) — element-level PNG
+  evidence with the flagged element boxed, deduped by `(url, selector)`,
+  surfaced in every report format.
+
+### Session, CLI & batch
+
+- Session runner + `wcag-checker` CLI — live per-page audit on the BiDi
+  audit hotkey (F9, polled so it survives CSP), findings accumulated in
+  memory, all reports + `results.json` + `manual-checklist.md` written on
+  window close.
+- `--width` flag — audit alternate viewport widths (e.g. responsive
+  views).
+- Batch mode (`wcag-batch`) — audits a URL list (plain one-per-line or a
+  two-column `name,website` CSV) reusing one Firefox, writing per-site
+  reports + an aggregate summary; failing sites recorded and skipped;
+  `--limit` caps large lists.
+
+## TODO
+
+- Nothing outstanding.
