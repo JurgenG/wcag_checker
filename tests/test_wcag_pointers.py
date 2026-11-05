@@ -146,3 +146,27 @@ class TestCheckPointers:
         driver = _FakeDriver({"passwords": [{"selector": "#p"}]})
         out = check_pointers(driver)
         assert _for("3.3.8", out)[0].url == "https://x/current"
+
+
+class TestDutch:
+    """Messages render in Dutch with ``lang="nl"``; the findings are unchanged."""
+
+    def test_live_region_and_ways_are_dutch(self) -> None:
+        data = {
+            "live": [{"selector": "#status", "role": "status"}],
+            "search": [{"selector": "form#search"}],
+        }
+        out = evaluate_pointers(data, "https://x/", lang="nl")
+        live = next(f for f in out if f.criterion == "4.1.3")
+        ways = next(f for f in out if f.criterion == "2.4.5")
+        assert live.message.startswith("Er is een live-regio (status) gevonden.")
+        assert (live.severity, live.selector) == ("needs-review", "#status")
+        assert "Gevonden manieren om deze pagina te vinden: een zoekveld." in ways.message
+        assert "nog minstens één andere onafhankelijke manier" in ways.message
+        assert ways.selector == "form#search"
+
+    def test_no_live_region_is_dutch(self) -> None:
+        out = evaluate_pointers({}, "https://x/", lang="nl")
+        live = next(f for f in out if f.criterion == "4.1.3")
+        assert live.message.startswith("Er is geen ARIA-live-regio")
+        assert live.selector is None

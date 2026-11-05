@@ -157,3 +157,38 @@ class TestNoKeyboardTrap:
         # Focus leaving the page (None) between repeats is not a trap.
         sequence = ["#x", None, "#x", None, "#x"]
         assert evaluate_no_keyboard_trap(sequence, URL) == []
+
+class TestDutch:
+    """Messages render in Dutch with ``lang="nl"``; the findings are unchanged."""
+
+    def test_target_size_is_dutch_with_dimensions(self) -> None:
+        (finding,) = evaluate_target_size(
+            [{"selector": "a.tiny", "width": 16, "height": 16, "inline": False}],
+            "u",
+            lang="nl",
+        )
+        assert finding.message.startswith(
+            "Het aanwijsgebied is 16×16 CSS-px groot, kleiner dan het minimum van 24×24."
+        )
+        assert (finding.criterion, finding.severity, finding.selector) == (
+            "2.5.8", "needs-review", "a.tiny",
+        )
+
+    def test_tab_order_and_trap_are_dutch(self) -> None:
+        (order,) = evaluate_tab_order([{"selector": "#a", "tabindex": 3}], "u", lang="nl")
+        assert order.message.startswith("Een positieve tabindex (3) plaatst dit element")
+        (trap,) = evaluate_no_keyboard_trap(["#t"] * 5, "u", lang="nl")
+        assert "de focus zit mogelijk vast" in trap.message
+        assert (trap.criterion, trap.selector) == ("2.1.2", "#t")
+
+    def test_focus_visible_is_dutch(self) -> None:
+        record = {
+            "selector": "#b", "gotFocus": True, "obscured": True,
+            "stylesBefore": {"outlineStyle": "none"},
+            "stylesAfter": {"outlineStyle": "none"},
+        }
+        visible, obscured = evaluate_focus_visible([record], "u", lang="nl")
+        assert "focusindicator" in visible.message
+        assert visible.criterion == "2.4.7"
+        assert "vaste kopbalk" in obscured.message
+        assert obscured.criterion == "2.4.11"

@@ -35,6 +35,8 @@ lock with `pip freeze` for release audits.
 | Asset | Location | License | Purpose |
 |---    |---       |---      |--- |
 | axe-core ruleset | ships inside `axe-selenium-python` | MPL-2.0 (axe-core 4.10.2) | The accessibility rules the tool runs. Injected into the live page and executed via `axe.run()`; the tool does not vendor its own copy. |
+| axe-core Dutch messages | `leak_inspector/wcag/locales/axe-nl.json` | MPL-2.0 (derived from axe-core 4.10.2's `locales/_template.json`) | Dutch translation of axe-core's rule titles and check messages, written for this project; loaded with `axe.configure({locale})` when `--lang nl` is used. |
+| WCAG 2.2 Dutch criterion titles | `leak_inspector/i18n/nl/criteria.py` | W3C Document License (W3C Authorized Translation) | The 86 official Dutch success-criterion titles, copied verbatim from <https://www.w3.org/Translations/WCAG22-nl/>. |
 
 The HTML report uses inline CSS and loads no remote assets. Its only local references are the element screenshots it writes alongside itself under `screenshots/`.
 
@@ -43,6 +45,7 @@ The HTML report uses inline CSS and loads no remote assets. Its only local refer
 - This project: **GPL-3.0-or-later** (see `LICENSE`).
 - `axe-selenium-python` and the bundled axe-core engine are **MPL-2.0**, which is GPL-3.0-or-later-compatible.
 - `selenium` (Apache-2.0) is permissively licensed and compatible with GPL-3.0-or-later distribution.
+- The Dutch WCAG criterion titles are copied verbatim from the W3C Authorized Translation, which the W3C Document License allows to be reproduced with attribution; `criteria.py` names the source.
 - Reports produced by the tool contain *user-supplied browsing content* and are not subject to the codebase's license.
 
 ## Key processes
@@ -66,4 +69,5 @@ The accessibility engine is not vendored directly — it rides inside `axe-selen
 
 1. Bump the `axe-selenium-python` pin in `pyproject.toml` and reinstall.
 2. The effective axe-core version is whatever that release bundles (currently **4.10.2**). Confirm it in the installed package: `node_modules/axe-core/package.json` under the package directory.
-3. After a bump, verify the WCAG tag set the runner requests (`wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`, `wcag22aa`) is still supported — WCAG 2.2 tags require axe-core >= 4.8. A regression test should fail loudly if a tag disappears.
+3. Rebuild the Dutch axe-core messages against the new release's `locales/_template.json`: every rule needs a `help` and every check its full message structure, with identical `${...}` / `{{...}}` placeholders. `tests/test_wcag_axe_runner.py` checks that the locale loads and covers the rules.
+4. After a bump, verify the WCAG tag set the runner requests (`wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`, `wcag22aa`) is still supported — WCAG 2.2 tags require axe-core >= 4.8. A regression test should fail loudly if a tag disappears.

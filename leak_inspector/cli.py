@@ -20,101 +20,162 @@
 Thin argument-parsing wrapper over the two session entry points in
 :mod:`leak_inspector.session`. By default it runs the interactive session
 (:func:`~leak_inspector.session.run_session`): Firefox opens on a starting
-URL, the operator browses by hand and presses ``Ctrl+Alt+A`` on each page
-to audit, then closes the window to write the reports. With ``--once`` it
-runs a one-shot audit (:func:`~leak_inspector.session.run_once`) of a
-single page and exits — no hotkey — which is the right choice for a page
-that redirects or vanishes too fast to press the hotkey by hand.
+URL, the operator browses by hand and presses the audit hotkey (``F9`` by
+default) on each page to audit, then closes the window to write the
+reports. With ``--once`` it runs a one-shot audit
+(:func:`~leak_inspector.session.run_once`) of a single page and exits.
+
+``--lang`` chooses the language of the reports and of this command's own
+messages and help (default :data:`~leak_inspector.i18n.DEFAULT_LANG`).
 """
 
 from __future__ import annotations
 
 import argparse
+from collections.abc import Sequence
 from pathlib import Path
 
 from . import session
 from .capture.hotkey import DEFAULT_HOTKEY, format_hotkey, hotkey_condition
+from .i18n import DEFAULT_LANG, LANGUAGES, N_, tr
 
-_DESCRIPTION = (
-    "Open Firefox on a URL and audit it for WCAG 2.2 AA issues. By default "
-    "you browse by hand and press the audit hotkey on each page to audit; "
-    "with --once the given page is audited automatically and the tool exits. "
-    "A clean run is not a conformance claim."
-)
+#: Closing line of every run, translated when printed.
+REMINDER = N_("Reminder: a clean automated run does not imply WCAG 2.2 conformance.")
 
 
-def build_parser() -> argparse.ArgumentParser:
-    """Construct the ``wcag-checker`` argument parser."""
-    parser = argparse.ArgumentParser(prog="wcag-checker", description=_DESCRIPTION)
-    parser.add_argument("url", help="starting URL to open (include the scheme)")
+def chosen_lang(argv: Sequence[str] | None) -> str:
+    """Return the ``--lang`` value in ``argv`` (or the default), before full parsing.
+
+    Lets the help text itself be built in the chosen language. An
+    unsupported value falls back to the default here; the full parser then
+    rejects it.
+    """
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument("--lang", default=DEFAULT_LANG)
+    known, _ = pre.parse_known_args(argv)
+    return known.lang if known.lang in LANGUAGES else DEFAULT_LANG
+
+
+def add_lang_argument(parser: argparse.ArgumentParser, lang: str) -> None:
+    """Add the shared ``--lang`` option to ``parser``, with help in ``lang``."""
+    parser.add_argument(
+        "--lang",
+        default=DEFAULT_LANG,
+        choices=LANGUAGES,
+        help=tr(
+            lang,
+            "language of the reports and messages: {choices} (default: %(default)s)",
+            choices=", ".join(LANGUAGES),
+        ),
+    )
+
+
+def build_parser(lang: str = DEFAULT_LANG) -> argparse.ArgumentParser:
+    """Construct the ``wcag-checker`` argument parser, with help in ``lang``."""
+    parser = argparse.ArgumentParser(
+        prog="wcag-checker",
+        description=tr(
+            lang,
+            "Open Firefox on a URL and audit it for WCAG 2.2 AA issues. By "
+            "default you browse by hand and press the audit hotkey on each "
+            "page to audit; with --once the given page is audited "
+            "automatically and the tool exits. A clean run is not a "
+            "conformance claim.",
+        ),
+    )
+    parser.add_argument(
+        "url", help=tr(lang, "starting URL to open (include the scheme)")
+    )
     parser.add_argument(
         "--out",
         type=Path,
         default=Path("reports"),
-        help="directory for the reports (default: reports/)",
+        help=tr(lang, "directory for the reports (default: reports/)"),
     )
     parser.add_argument(
         "--headless",
         action="store_true",
-        help="run Firefox without a visible window (a real desktop is preferred)",
+        help=tr(
+            lang,
+            "run Firefox without a visible window (a real desktop is preferred)",
+        ),
     )
     parser.add_argument(
         "--width",
         type=int,
         default=None,
         metavar="PX",
-        help=(
+        help=tr(
+            lang,
             "resize the browser window to this pixel width before auditing, "
             "to check a responsive/mobile layout (default: Firefox's own "
-            "window width)"
+            "window width)",
         ),
     )
     parser.add_argument(
         "--once",
         action="store_true",
-        help=(
+        help=tr(
+            lang,
             "audit the given page once and exit, without the interactive "
             "hotkey (waits for the page to settle first — use this when a "
-            "page redirects or closes too fast to press the hotkey)"
+            "page redirects or closes too fast to press the hotkey)",
         ),
     )
     parser.add_argument(
         "--hotkey",
         default=DEFAULT_HOTKEY,
         metavar="COMBO",
-        help=(
+        help=tr(
+            lang,
             "interactive audit hotkey, e.g. ctrl+alt+shift+a or f9 "
             "(default: %(default)s). Change it if your window manager grabs "
-            "the default combo."
+            "the default combo.",
         ),
     )
     parser.add_argument(
         "--format",
         default="html",
         metavar="FMT",
-        help=(
-            "report format(s), comma-separated — choose from "
-            + ", ".join(session.FORMAT_CHOICES)
-            + " (default: %(default)s). 'jira-tickets' writes one JIRA-style "
+        help=tr(
+            lang,
+            "report format(s), comma-separated — choose from {choices} "
+            "(default: %(default)s). 'jira-tickets' writes one JIRA-style "
             "ticket per issue type into a jira/ subfolder; 'all' writes every "
-            "format. The manual-review checklist is always written."
+            "format. The manual-review checklist is always written.",
+            choices=", ".join(session.FORMAT_CHOICES),
         ),
     )
+    add_lang_argument(parser, lang)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     """Parse arguments, run the chosen session mode, and print a summary."""
-    args = build_parser().parse_args(argv)
+    args = build_parser(chosen_lang(argv)).parse_args(argv)
+    lang = args.lang
 
     try:
         formats = session.parse_formats(args.format)
     except ValueError as exc:
-        print(f"Invalid --format {args.format!r}: {exc}")
+        print(
+            tr(
+                lang,
+                "Invalid --format {value}: {reason}",
+                value=repr(args.format),
+                reason=exc,
+            )
+        )
         return 2
 
     if args.width is not None and args.width <= 0:
-        print(f"Invalid --width {args.width!r}: must be a positive number of pixels")
+        print(
+            tr(
+                lang,
+                "Invalid --width {value}: must be a positive number of pixels",
+                value=repr(args.width),
+            )
+        )
         return 2
 
     if args.once:
@@ -123,22 +184,35 @@ def main(argv: list[str] | None = None) -> int:
     try:
         hotkey_condition(args.hotkey)  # validate before launching Firefox
     except ValueError as exc:
-        print(f"Invalid --hotkey {args.hotkey!r}: {exc}")
+        print(
+            tr(
+                lang,
+                "Invalid --hotkey {value}: {reason}",
+                value=repr(args.hotkey),
+                reason=exc,
+            )
+        )
         return 2
     return _run_interactive(args, formats)
 
 
 def _run_interactive(args: argparse.Namespace, formats: tuple[str, ...]) -> int:
     """Run the hand-driven hotkey session and print a short summary."""
+    lang = args.lang
     combo = format_hotkey(args.hotkey)
     print(
-        f"Opening Firefox. Browse to a page you want checked, click into the "
-        f"page (so it has keyboard focus), then press {combo} to audit it. "
-        f"Each audit is confirmed below. Close the window when you're done."
+        tr(
+            lang,
+            "Opening Firefox. Browse to a page you want checked, click into "
+            "the page (so it has keyboard focus), then press {combo} to audit "
+            "it. Each audit is confirmed below. Close the window when you're "
+            "done.",
+            combo=combo,
+        )
     )
 
     def _confirm(url: str, count: int) -> None:
-        print(f"  audited {url} — {count} finding(s)")
+        print("  " + tr(lang, "audited {url} — {count} finding(s)", url=url, count=count))
 
     result = session.run_session(
         args.url,
@@ -148,34 +222,59 @@ def _run_interactive(args: argparse.Namespace, formats: tuple[str, ...]) -> int:
         on_audit=_confirm,
         hotkey=args.hotkey,
         formats=formats,
+        lang=lang,
     )
 
     print(
-        f"Audited {len(result.audited_urls)} page(s); "
-        f"{len(result.findings)} finding(s)."
+        tr(
+            lang,
+            "Audited {pages} page(s); {count} finding(s).",
+            pages=len(result.audited_urls),
+            count=len(result.findings),
+        )
     )
-    _print_written(result)
-    print("Reminder: a clean automated run does not imply WCAG 2.2 conformance.")
+    _print_written(result, lang)
+    print(tr(lang, REMINDER))
     return 0
 
 
 def _run_once(args: argparse.Namespace, formats: tuple[str, ...]) -> int:
     """Run a one-shot single-page audit and print a short summary."""
-    print(f"Opening Firefox and auditing {args.url} once...")
+    lang = args.lang
+    print(tr(lang, "Opening Firefox and auditing {url} once...", url=args.url))
     result = session.run_once(
-        args.url, args.out, headless=args.headless, width=args.width, formats=formats
+        args.url,
+        args.out,
+        headless=args.headless,
+        width=args.width,
+        formats=formats,
+        lang=lang,
     )
 
     audited = result.audited_urls[0] if result.audited_urls else args.url
     if audited != args.url:
-        print(f"Note: {args.url} redirected to {audited}; audited that.")
-    print(f"Audited {audited}; {len(result.findings)} finding(s).")
-    _print_written(result)
-    print("Reminder: a clean automated run does not imply WCAG 2.2 conformance.")
+        print(
+            tr(
+                lang,
+                "Note: {url} redirected to {target}; audited that.",
+                url=args.url,
+                target=audited,
+            )
+        )
+    print(
+        tr(
+            lang,
+            "Audited {url}; {count} finding(s).",
+            url=audited,
+            count=len(result.findings),
+        )
+    )
+    _print_written(result, lang)
+    print(tr(lang, REMINDER))
     return 0
 
 
-def _print_written(result: session.SessionResult) -> None:
+def _print_written(result: session.SessionResult, lang: str) -> None:
     """Print the exact report files this run wrote, with their full paths.
 
     Names the concrete files (not just the directory) so the operator opens
@@ -184,7 +283,7 @@ def _print_written(result: session.SessionResult) -> None:
     subfolder, so that folder is summarized once instead of listing every
     ticket.
     """
-    print(f"Reports written to {result.output_dir}/")
+    print(tr(lang, "Reports written to {path}/", path=result.output_dir))
     jira_dirs: set[str] = set()
     for name, path in result.written.items():
         if "/" in name:
@@ -192,7 +291,7 @@ def _print_written(result: session.SessionResult) -> None:
         else:
             print(f"  {path}")
     for dirname in sorted(jira_dirs):
-        print(f"  {result.output_dir / dirname}/ (JIRA tickets)")
+        print(f"  {result.output_dir / dirname}/ ({tr(lang, 'JIRA tickets')})")
 
 
 if __name__ == "__main__":

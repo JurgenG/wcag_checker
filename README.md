@@ -2,6 +2,8 @@
 
 `wcag-checker` audits web pages for **WCAG 2.2 AA** accessibility. It opens a real Firefox window, you browse the site as a visitor would, and on any page you want checked you press **F9**. The tool audits that page exactly as it is on screen — after cookie banners, menus, logins and client-side rendering — and when you close the window it writes a report.
 
+Reports, checklists and terminal messages are in **Dutch** by default; add `--lang en` for English.
+
 Each report combines automated findings, screenshots of every flagged element, a coverage table for all WCAG 2.2 A + AA criteria, and a step-by-step checklist for the criteria a person has to judge. Together they form the starting point of a full accessibility review.
 
 ## Install
@@ -21,7 +23,7 @@ wcag-checker https://example.com
 ```
 
 1. Firefox opens on the URL. Browse the site normally.
-2. On a page you want checked, click once inside the page, then press `F9`. The terminal confirms each audit, e.g. `audited https://example.com/ — 12 finding(s)`. Repeat on as many pages as you like.
+2. On a page you want checked, click once inside the page, then press `F9`. The terminal confirms each audit, e.g. `geauditeerd: https://example.com/ — 12 bevinding(en)`. Repeat on as many pages as you like.
 3. Close the Firefox window. The reports are written and the terminal lists the files.
 
 ### One page, automatically: `--once`
@@ -46,6 +48,7 @@ Audits every URL in a file, one after the other, in one Firefox window. The file
 | Option | Applies to | Effect |
 | --- | --- | --- |
 | `--out DIR` | all | Where reports go. Default `reports/` (`runs/` for `wcag-batch`). |
+| `--lang LANG` | all | Language of the reports, checklist and terminal messages: `nl` (default) or `en`. |
 | `--format FMT` | all | Report format(s), comma-separated. Default `html`. See [Output](#output). |
 | `--width PX` | all | Resize the window to this width before auditing, to check a mobile layout, e.g. `--width 375`. Firefox has a minimum window width of about 500 px; the tool warns when it audited at a wider width than asked. |
 | `--headless` | all | Run Firefox without a visible window. Keyboard and focus checks are most reliable with a visible window. |
@@ -65,6 +68,15 @@ Every audit runs these checks against the live page and groups the results by WC
 - **Reflow**: horizontal scrolling at a 320 px wide viewport (1.4.10).
 
 Every report also contains a **reading view**: the page's content and accessible names in source order, roughly the way a screen reader or text-only browser reads it, with unnamed elements marked. It helps a reviewer judge reading order and naming.
+
+## Languages
+
+`--lang` sets the language of everything the tool writes: the reports, the JIRA tickets, the manual checklist, the batch summary, `--help` and the terminal messages.
+
+- **Criterion names** use the official titles from the W3C [Authorized Dutch Translation of WCAG 2.2](https://www.w3.org/Translations/WCAG22-nl/).
+- **axe-core messages** (rule titles and the per-element "Los een van de volgende problemen op" details) come from a Dutch translation of axe-core's messages that ships with the tool.
+- **Machine-readable values** stay the same in every language: in `results.json` and `summary.json` the ids, severities, tiers and statuses are always `error`, `needs-review`, `full`, … and a `lang` field records the report language.
+- JIRA ticket filenames use the English criterion name, so they stay the same across languages.
 
 ## Output
 

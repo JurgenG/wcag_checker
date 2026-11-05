@@ -47,6 +47,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .capture.driver import launch_driver
+from .i18n import N_, SOURCE_LANG, tr
 from .session import (
     DEFAULT_FORMATS,
     SCREENSHOT_DIRNAME,
@@ -159,6 +160,7 @@ def run_batch(
     limit: int | None = None,
     source: str | None = None,
     formats: tuple[str, ...] = DEFAULT_FORMATS,
+    lang: str = SOURCE_LANG,
 ) -> BatchResult:
     """Audit each ``(name, url)`` into its own subdirectory + write a summary.
 
@@ -170,7 +172,8 @@ def run_batch(
     (the first N); ``source`` labels the summary; ``formats`` selects the
     per-site report format(s); ``width``, if given, resizes the window to
     that pixel width so every site is audited at a responsive/mobile
-    layout. Returns a :class:`BatchResult`; the per-site reports and the
+    layout. ``lang`` is the language of the reports and the summary.
+    Returns a :class:`BatchResult`; the per-site reports and the
     ``summary.*`` files are written under ``output_dir``.
     """
     out = Path(output_dir)
@@ -179,15 +182,19 @@ def run_batch(
 
     taken: set[str] = set()
     sites: list[SiteResult] = []
-    with launch_driver(headless=headless, width=width) as launched:
+    with launch_driver(headless=headless, width=width, lang=lang) as launched:
         driver = launched.driver
         for name, url in selected:
             slug = site_slug(url, taken)
             sites.append(
-                _audit_site(driver, name, url, slug, out / slug, generated_at, formats)
+                _audit_site(
+                    driver, name, url, slug, out / slug, generated_at, formats, lang
+                )
             )
 
-    written = write_summary(out, sites, generated_at=generated_at, source=source)
+    written = write_summary(
+        out, sites, generated_at=generated_at, source=source, lang=lang
+    )
     return BatchResult(
         sites=tuple(sites),
         output_dir=out,
@@ -205,6 +212,7 @@ def _audit_site(
     site_dir: Path,
     generated_at: str,
     formats: tuple[str, ...],
+    lang: str,
 ) -> SiteResult:
     """Audit one site into ``site_dir``; never raises — failures are recorded.
 
@@ -214,7 +222,9 @@ def _audit_site(
     try:
         driver.get(url)
         audited_url = wait_until_settled(driver)
-        findings = audit_page(driver, audited_url, site_dir / SCREENSHOT_DIRNAME)
+        findings = audit_page(
+            driver, audited_url, site_dir / SCREENSHOT_DIRNAME, lang=lang
+        )
         view = capture_text_view(driver, audited_url)
         write_reports(
             site_dir,
@@ -224,6 +234,7 @@ def _audit_site(
             formats=formats,
             title=name,
             text_views=[view] if view is not None else [],
+            lang=lang,
         )
         sev = reporter.build_report(findings, urls=[audited_url]).summary
         return SiteResult(
@@ -264,7 +275,7 @@ def _short_error(exc: Exception) -> str:
 
 
 #: Repeated in every summary format, mirroring the per-page report disclaimer.
-SUMMARY_DISCLAIMER = (
+SUMMARY_DISCLAIMER = N_(
     "A clean automated run does not imply WCAG 2.2 AA conformance. These "
     "per-site totals count only automated findings; every site still needs "
     "the manual-review checklist worked through before any conformance claim."
@@ -277,18 +288,20 @@ def write_summary(
     *,
     generated_at: str | None = None,
     source: str | None = None,
+    lang: str = SOURCE_LANG,
 ) -> dict[str, Path]:
     """Render and write ``summary.{json,md,html}`` to ``output_dir``.
 
     Pure output seam (no driver, no network); creates ``output_dir`` if
-    needed and returns a basename→path map.
+    needed and returns a basename→path map. Written in ``lang``.
     """
+    kw = {"generated_at": generated_at, "source": source, "lang": lang}
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
     payloads = {
-        "summary.json": render_summary_json(sites, generated_at=generated_at, source=source),
-        "summary.md": render_summary_markdown(sites, generated_at=generated_at, source=source),
-        "summary.html": render_summary_html(sites, generated_at=generated_at, source=source),
+        "summary.json": render_summary_json(sites, **kw),
+        "summary.md": render_summary_markdown(sites, **kw),
+        "summary.html": render_summary_html(sites, **kw),
     }
     written: dict[str, Path] = {}
     for name, text in payloads.items():
@@ -304,20 +317,47 @@ def _counts(sites: list[SiteResult]) -> tuple[int, int]:
     return audited, len(sites) - audited
 
 
+#: Column headers of the summary table.
+_SUMMARY_HEADERS: tuple[str, ...] = (
+    N_("Site"),
+    N_("Status"),
+    N_("Criteria"),
+    N_("Error"),
+    N_("Warning"),
+    N_("Needs-review"),
+)
+
+
+def _totals_line(lang: str, total: int, audited: int, failed: int) -> str:
+    """'N site(s): N audited, N failed.' in ``lang``."""
+    return tr(
+        lang,
+        "{total} site(s): {audited} audited, {failed} failed.",
+        total=total,
+        audited=audited,
+        failed=failed,
+    )
+
+
 def _site_label(site: SiteResult) -> str:
     """Display label for a site: its name if it has one, else its URL."""
     return site.name or site.url
 
 
 def render_summary_json(
-    sites: list[SiteResult], *, generated_at: str | None = None, source: str | None = None
+    sites: list[SiteResult],
+    *,
+    generated_at: str | None = None,
+    source: str | None = None,
+    lang: str = SOURCE_LANG,
 ) -> str:
-    """Render the canonical ``summary.json`` string."""
+    """Render the canonical ``summary.json`` string; the disclaimer is in ``lang``."""
     audited, failed = _counts(sites)
     payload = {
+        "lang": lang,
         "generated_at": generated_at,
         "source": source,
-        "disclaimer": SUMMARY_DISCLAIMER,
+        "disclaimer": tr(lang, SUMMARY_DISCLAIMER),
         "totals": {"sites": len(sites), "audited": audited, "failed": failed},
         "sites": [
             {
@@ -341,42 +381,55 @@ def render_summary_json(
 
 
 def render_summary_markdown(
-    sites: list[SiteResult], *, generated_at: str | None = None, source: str | None = None
+    sites: list[SiteResult],
+    *,
+    generated_at: str | None = None,
+    source: str | None = None,
+    lang: str = SOURCE_LANG,
 ) -> str:
-    """Render the aggregate summary as a Markdown table."""
+    """Render the aggregate summary as a Markdown table, in ``lang``."""
     audited, failed = _counts(sites)
-    lines = ["# WCAG 2.2 AA batch audit", ""]
+    lines = [f"# {tr(lang, 'WCAG 2.2 AA batch audit')}", ""]
     if generated_at:
-        lines.append(f"_Generated: {generated_at}_")
+        lines.append(f"_{tr(lang, 'Generated: {when}', when=generated_at)}_")
         lines.append("")
     if source:
-        lines.append(f"Source: `{source}`")
+        lines.append(tr(lang, "Source: {source}", source=f"`{source}`"))
         lines.append("")
-    lines.append(f"{len(sites)} site(s): {audited} audited, {failed} failed.")
+    lines.append(_totals_line(lang, len(sites), audited, failed))
     lines.append("")
-    lines.append(f"> {SUMMARY_DISCLAIMER}")
+    lines.append(f"> {tr(lang, SUMMARY_DISCLAIMER)}")
     lines.append("")
-    lines.append("| Site | Status | Criteria | Error | Warning | Needs-review |")
+    lines.append("| " + " | ".join(tr(lang, h) for h in _SUMMARY_HEADERS) + " |")
     lines.append("| --- | --- | ---: | ---: | ---: | ---: |")
     for s in sites:
         detail = f"<br>{s.url}" if s.name else ""
         if s.status == "audited":
             lines.append(
-                f"| [{_site_label(s)}]({s.slug}/report.html){detail} | audited "
+                f"| [{_site_label(s)}]({s.slug}/report.html){detail} "
+                f"| {tr(lang, 'audited')} "
                 f"| {s.criteria_with_findings} | {s.error_count} "
                 f"| {s.warning_count} | {s.needs_review_count} |"
             )
         else:
             lines.append(
-                f"| {_site_label(s)}{detail} | **failed**: {s.error} | – | – | – | – |"
+                f"| {_site_label(s)}{detail} | **{tr(lang, 'failed')}**: {s.error} "
+                "| – | – | – | – |"
             )
     return "\n".join(lines).rstrip() + "\n"
 
 
 def render_summary_html(
-    sites: list[SiteResult], *, generated_at: str | None = None, source: str | None = None
+    sites: list[SiteResult],
+    *,
+    generated_at: str | None = None,
+    source: str | None = None,
+    lang: str = SOURCE_LANG,
 ) -> str:
-    """Render a self-contained HTML summary (inline CSS; links to per-site reports)."""
+    """Render a self-contained HTML summary (inline CSS; links to per-site reports).
+
+    Written in ``lang``; the page's ``lang`` attribute matches.
+    """
     audited, failed = _counts(sites)
     rows: list[str] = []
     for s in sites:
@@ -390,7 +443,8 @@ def render_summary_html(
             )
             rows.append(
                 "<tr>"
-                f"<td>{link}{detail}</td><td class='ok'>audited</td>"
+                f"<td>{link}{detail}</td>"
+                f"<td class='ok'>{html.escape(tr(lang, 'audited'))}</td>"
                 f"<td>{s.criteria_with_findings}</td><td>{s.error_count}</td>"
                 f"<td>{s.warning_count}</td><td>{s.needs_review_count}</td></tr>"
             )
@@ -398,20 +452,29 @@ def render_summary_html(
             rows.append(
                 "<tr>"
                 f"<td>{html.escape(_site_label(s))}{detail}</td>"
-                f"<td class='fail'>failed: {html.escape(s.error or '')}</td>"
+                f"<td class='fail'>{html.escape(tr(lang, 'failed'))}: "
+                f"{html.escape(s.error or '')}</td>"
                 "<td>–</td><td>–</td><td>–</td><td>–</td></tr>"
             )
     generated = (
-        f"<p class='meta'>Generated: {html.escape(generated_at)}</p>" if generated_at else ""
+        f"<p class='meta'>{html.escape(tr(lang, 'Generated: {when}', when=generated_at))}</p>"
+        if generated_at
+        else ""
     )
-    src = f"<p class='meta'>Source: {html.escape(source)}</p>" if source else ""
+    src = (
+        f"<p class='meta'>{html.escape(tr(lang, 'Source: {source}', source=source))}</p>"
+        if source
+        else ""
+    )
+    headers = "".join(f"<th>{html.escape(tr(lang, h))}</th>" for h in _SUMMARY_HEADERS)
     return _SUMMARY_HTML_TEMPLATE.format(
+        lang=html.escape(lang, quote=True),
+        title=html.escape(tr(lang, "WCAG 2.2 AA batch audit")),
         generated=generated,
         source=src,
-        total=len(sites),
-        audited=audited,
-        failed=failed,
-        disclaimer=html.escape(SUMMARY_DISCLAIMER),
+        totals=html.escape(_totals_line(lang, len(sites), audited, failed)),
+        disclaimer=html.escape(tr(lang, SUMMARY_DISCLAIMER)),
+        headers=headers,
         rows="".join(rows),
     )
 
@@ -420,11 +483,11 @@ def render_summary_html(
 #: ``{`` / ``}`` in the CSS are doubled so ``str.format`` leaves them be.
 _SUMMARY_HTML_TEMPLATE = """\
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{lang}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>WCAG 2.2 AA batch audit</title>
+<title>{title}</title>
 <style>
 body {{ font-family: system-ui, sans-serif; margin: 2rem; color: #1a1a1a; }}
 .meta {{ color: #555; }}
@@ -440,14 +503,13 @@ td.fail {{ color: #842029; }}
 </style>
 </head>
 <body>
-<h1>WCAG 2.2 AA batch audit</h1>
+<h1>{title}</h1>
 {generated}
 {source}
 <p class="disclaimer">{disclaimer}</p>
-<p>{total} site(s): {audited} audited, {failed} failed.</p>
+<p>{totals}</p>
 <table>
-<thead><tr><th>Site</th><th>Status</th><th>Criteria</th><th>Error</th>
-<th>Warning</th><th>Needs-review</th></tr></thead>
+<thead><tr>{headers}</tr></thead>
 <tbody>{rows}</tbody>
 </table>
 </body>

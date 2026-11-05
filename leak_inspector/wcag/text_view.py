@@ -54,6 +54,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from ..i18n import N_, SOURCE_LANG, tr
+
 #: Default cap on how many elements one page walk emits. A page with more
 #: is truncated (and :attr:`PageTextView.truncated` is set) so a runaway
 #: DOM cannot produce an unbounded artifact; the render notes the cut so
@@ -62,7 +64,7 @@ DEFAULT_MAX_NODES = 4000
 
 #: Explains the artifact's standing; carried into the rendered document so
 #: the reading view is never mistaken for a screen-reader test result.
-NOTE = (
+NOTE = N_(
     "This is an approximate *linearized reading view*: the page walked in "
     "DOM source order with a simplified accessible name for each heading, "
     "link, button, image, form field and landmark — broadly what a screen "
@@ -365,10 +367,23 @@ def _to_node(data: dict[str, Any]) -> TextNode:
 #: Title of the report's embedded reading-view section, shared across the
 #: Markdown / text / HTML renderings so the section reads the same
 #: everywhere.
-SECTION_HEADING = "Reading view (manual-review aid)"
+SECTION_HEADING = N_("Reading view (manual-review aid)")
+
+#: The fixed notes the page walker attaches to nodes (``_WALK_JS``). They
+#: are stored in English and translated when rendered.
+WALKER_NOTES: tuple[str, ...] = (
+    N_("no alt attribute"),
+    N_("decorative (empty alt)"),
+    N_("iframe has no title"),
+    N_("name from placeholder only"),
+    N_("name from title attribute"),
+    N_("no label"),
+)
 
 
-def render_markdown_section(views: Sequence[PageTextView]) -> str:
+def render_markdown_section(
+    views: Sequence[PageTextView], *, lang: str = SOURCE_LANG
+) -> str:
     """Render the reading view as a Markdown ``## Reading view`` section.
 
     Pure. Each page gets a sub-section with a heading/landmark/link/image/
@@ -376,84 +391,97 @@ def render_markdown_section(views: Sequence[PageTextView]) -> str:
     name are flagged with ``⚠``. Leads with :data:`NOTE` so the section is
     not read as a screen-reader test result. Returns ``""`` when there are
     no views, so a report with nothing captured gets no empty section.
+    Written in ``lang``.
     """
     if not views:
         return ""
-    lines = [f"## {SECTION_HEADING}", "", NOTE, ""]
+    lines = [f"## {tr(lang, SECTION_HEADING)}", "", tr(lang, NOTE), ""]
     for view in views:
         lines.append(f"### {view.title or view.url}")
         if view.title:
             lines.append(f"<{view.url}>")
         lines.append("")
-        lines.append(_summary_line(view))
+        lines.append(_summary_line(view, lang))
         lines.append("")
         if not view.nodes:
-            lines += ["_No visible content was extracted from this page._", ""]
+            lines += [
+                f"_{tr(lang, 'No visible content was extracted from this page.')}_",
+                "",
+            ]
             continue
-        lines += [f"- {_format_node(node)}" for node in view.nodes]
+        lines += [f"- {_format_node(node, lang)}" for node in view.nodes]
         if view.truncated:
-            lines += ["", _truncation_note(view)]
+            lines += ["", _truncation_note(view, lang)]
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
 
-def render_text_section(views: Sequence[PageTextView]) -> str:
+def render_text_section(
+    views: Sequence[PageTextView], *, lang: str = SOURCE_LANG
+) -> str:
     """Render the reading view as a plain-text report section.
 
     Pure. Mirrors :func:`render_markdown_section` for the ``.txt`` report;
-    returns ``""`` when there are no views.
+    returns ``""`` when there are no views. Written in ``lang``.
     """
     if not views:
         return ""
-    lines = [SECTION_HEADING, "-" * len(SECTION_HEADING), ""]
-    lines += textwrap.wrap(NOTE, width=76)
+    heading = tr(lang, SECTION_HEADING)
+    lines = [heading, "-" * len(heading), ""]
+    lines += textwrap.wrap(tr(lang, NOTE), width=76)
     lines.append("")
     for view in views:
         lines.append(view.title or view.url)
         if view.title:
             lines.append(f"  {view.url}")
-        lines.append(f"  {_summary_line(view)}")
+        lines.append(f"  {_summary_line(view, lang)}")
         if not view.nodes:
-            lines += ["  (no visible content was extracted from this page)", ""]
+            lines += [
+                f"  ({tr(lang, 'No visible content was extracted from this page.')})",
+                "",
+            ]
             continue
-        lines += [f"  {_format_node(node)}" for node in view.nodes]
+        lines += [f"  {_format_node(node, lang)}" for node in view.nodes]
         if view.truncated:
-            lines.append(f"  {_truncation_note(view)}")
+            lines.append(f"  {_truncation_note(view, lang)}")
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
 
-def render_html_section(views: Sequence[PageTextView]) -> str:
+def render_html_section(
+    views: Sequence[PageTextView], *, lang: str = SOURCE_LANG
+) -> str:
     """Render the reading view as an HTML fragment for the report body.
 
     Pure. Each page is a collapsed ``<details>`` (title + tally in the
     summary) holding the reading-order list, so the section never dominates
     the report until expanded. Every value is HTML-escaped. Returns ``""``
     when there are no views (the report then shows no reading-view section).
+    Written in ``lang``.
     """
     if not views:
         return ""
     parts = [
-        f"<h2>{html.escape(SECTION_HEADING)}</h2>",
-        f"<p class='rv-note'>{html.escape(NOTE)}</p>",
+        f"<h2>{html.escape(tr(lang, SECTION_HEADING))}</h2>",
+        f"<p class='rv-note'>{html.escape(tr(lang, NOTE))}</p>",
     ]
     for view in views:
         heading = html.escape(view.title or view.url)
         parts.append("<details class='rv'>")
         parts.append(
-            f"<summary>{heading} — {html.escape(_summary_line(view))}</summary>"
+            f"<summary>{heading} — {html.escape(_summary_line(view, lang))}</summary>"
         )
         if view.title:
             parts.append(f"<p class='rv-url'>{html.escape(view.url)}</p>")
         if not view.nodes:
-            parts.append(
-                "<p><em>No visible content was extracted from this page.</em></p>"
-            )
+            empty = tr(lang, "No visible content was extracted from this page.")
+            parts.append(f"<p><em>{html.escape(empty)}</em></p>")
         else:
-            items = "".join(_node_html(node) for node in view.nodes)
+            items = "".join(_node_html(node, lang) for node in view.nodes)
             parts.append(f"<ul class='rv-list'>{items}</ul>")
             if view.truncated:
-                parts.append(f"<p><em>{html.escape(_truncation_note(view))}</em></p>")
+                note = _truncation_note(view, lang)
+                parts.append(f"<p><em>{html.escape(note)}</em></p>")
         parts.append("</details>")
     return "".join(parts)
 
@@ -482,27 +510,33 @@ def reading_view_payload(views: Sequence[PageTextView]) -> list[dict[str, Any]]:
     ]
 
 
-def _truncation_note(view: PageTextView) -> str:
+def _truncation_note(view: PageTextView, lang: str) -> str:
     """Sentence stating the walk was capped, so the cut is never silent."""
-    return (
-        f"Reading view truncated at {len(view.nodes)} elements; the page has more."
+    return tr(
+        lang,
+        "Reading view truncated at {count} elements; the page has more.",
+        count=len(view.nodes),
     )
 
 
-def _summary_line(view: PageTextView) -> str:
+def _summary_line(view: PageTextView, lang: str) -> str:
     """One-line tally of the page's landmarks, headings, and controls."""
     nodes = view.nodes
     images = [n for n in nodes if n.role == "image"]
     fields = [n for n in nodes if n.role == "field"]
-    return (
-        f"{_count(nodes, 'heading')} heading(s), "
-        f"{_count(nodes, 'landmark')} landmark(s), "
-        f"{_count(nodes, 'link')} link(s), "
-        f"{_count(nodes, 'button')} button(s), "
-        f"{len(images)} image(s) ({sum(1 for n in images if not n.named)} "
-        "without a name), "
-        f"{len(fields)} form field(s) ({sum(1 for n in fields if not n.named)} "
-        "without a label)."
+    return tr(
+        lang,
+        "{headings} heading(s), {landmarks} landmark(s), {links} link(s), "
+        "{buttons} button(s), {images} image(s) ({unnamed_images} without a "
+        "name), {fields} form field(s) ({unlabelled_fields} without a label).",
+        headings=_count(nodes, "heading"),
+        landmarks=_count(nodes, "landmark"),
+        links=_count(nodes, "link"),
+        buttons=_count(nodes, "button"),
+        images=len(images),
+        unnamed_images=sum(1 for n in images if not n.named),
+        fields=len(fields),
+        unlabelled_fields=sum(1 for n in fields if not n.named),
     )
 
 
@@ -511,19 +545,25 @@ def _count(nodes: Sequence[TextNode], role: str) -> int:
     return sum(1 for n in nodes if n.role == role)
 
 
-def _format_node(node: TextNode) -> str:
+def _note(node: TextNode, lang: str) -> str | None:
+    """The node's walker note in ``lang``, or ``None``."""
+    return tr(lang, node.note) if node.note else None
+
+
+def _format_node(node: TextNode, lang: str) -> str:
     """Format one node as the body of a Markdown list item."""
     if node.role == "heading":
         return f"**H{node.level or '?'}** " + (
-            node.name if node.named else "⚠ (empty heading)"
+            node.name if node.named else f"⚠ ({tr(lang, 'empty heading')})"
         )
     if node.role == "text":
         return node.name
     tag = _role_tag(node)
+    note = _note(node, lang)
     if not node.named:
-        return f"`{tag}` ⚠ {node.note or 'no accessible name'}"
-    body = f'"{node.name}"' if node.name else "(unnamed)"
-    return f"`{tag}` {body}" + (f" — {node.note}" if node.note else "")
+        return f"`{tag}` ⚠ {note or tr(lang, 'no accessible name')}"
+    body = f'"{node.name}"' if node.name else f"({tr(lang, 'unnamed')})"
+    return f"`{tag}` {body}" + (f" — {note}" if note else "")
 
 
 def _role_tag(node: TextNode) -> str:
@@ -535,25 +575,36 @@ def _role_tag(node: TextNode) -> str:
     return node.role
 
 
-def _node_html(node: TextNode) -> str:
+def _node_html(node: TextNode, lang: str) -> str:
     """Format one node as an escaped ``<li>`` for the HTML reading view."""
     if node.role == "heading":
-        label = html.escape(node.name) if node.named else "⚠ (empty heading)"
+        label = (
+            html.escape(node.name)
+            if node.named
+            else f"⚠ ({html.escape(tr(lang, 'empty heading'))})"
+        )
         return f"<li class='rv-heading'><strong>H{node.level or '?'}</strong> {label}</li>"
     if node.role == "text":
         return f"<li class='rv-text'>{html.escape(node.name)}</li>"
     tag = f"<code>{html.escape(_role_tag(node))}</code>"
+    note = _note(node, lang)
     if not node.named:
-        return f"<li class='rv-warn'>{tag} ⚠ {html.escape(node.note or 'no accessible name')}</li>"
-    body = f'"{html.escape(node.name)}"' if node.name else "(unnamed)"
-    note = f" — {html.escape(node.note)}" if node.note else ""
-    return f"<li>{tag} {body}{note}</li>"
+        missing = note or tr(lang, "no accessible name")
+        return f"<li class='rv-warn'>{tag} ⚠ {html.escape(missing)}</li>"
+    body = (
+        f'"{html.escape(node.name)}"'
+        if node.name
+        else f"({html.escape(tr(lang, 'unnamed'))})"
+    )
+    suffix = f" — {html.escape(note)}" if note else ""
+    return f"<li>{tag} {body}{suffix}</li>"
 
 
 __all__ = [
     "DEFAULT_MAX_NODES",
     "NOTE",
     "SECTION_HEADING",
+    "WALKER_NOTES",
     "PageTextView",
     "TextNode",
     "extract",

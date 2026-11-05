@@ -26,8 +26,10 @@ from __future__ import annotations
 import pytest
 
 from leak_inspector.wcag.axe_runner import (
+    axe_locale,
     criteria_from_tags,
     normalize_results,
+    run_axe,
 )
 
 URL = "https://example.test/page"
@@ -256,3 +258,52 @@ class TestExperimentalRules:
         out = normalize_results(results, URL)
         assert [f.criterion for f in out] == ["2.5.3"]
         assert out[0].severity == "needs-review"
+
+
+class TestLanguage:
+    def test_framing_text_follows_lang(self, axe_results) -> None:
+        en = normalize_results(axe_results, URL)
+        nl = normalize_results(axe_results, URL, lang="nl")
+        assert len(en) == len(nl)
+        assert "] violation: " in en[0].message and "See https://" in en[0].message
+        assert "] overtreding: " in nl[0].message and "Zie https://" in nl[0].message
+        assert "] te controleren: " in nl[-1].message
+        assert [f.severity for f in en] == [f.severity for f in nl]
+
+    def test_run_axe_configures_the_bundled_locale(self, monkeypatch) -> None:
+        import sys
+        import types
+
+        scripts: list[tuple] = []
+
+        class FakeAxe:
+            def __init__(self, driver) -> None:
+                self.driver = driver
+
+            def inject(self) -> None:
+                scripts.append(("inject",))
+
+            def run(self, options=None) -> dict:
+                scripts.append(("run",))
+                return {}
+
+        class FakeDriver:
+            def execute_script(self, script, *args):
+                scripts.append((script, *args))
+
+        monkeypatch.setitem(
+            sys.modules, "axe_selenium_python", types.SimpleNamespace(Axe=FakeAxe)
+        )
+        run_axe(FakeDriver(), lang="nl")
+        assert scripts[0] == ("inject",)
+        assert "axe.configure" in scripts[1][0] and scripts[1][1]["lang"] == "nl"
+        assert scripts[2] == ("run",)
+
+        scripts.clear()
+        run_axe(FakeDriver())
+        assert [s[0] for s in scripts] == ["inject", "run"]  # English: no configure
+
+    def test_axe_locale_is_complete(self) -> None:
+        locale = axe_locale("nl")
+        assert len(locale["rules"]) >= 100 and len(locale["checks"]) >= 100
+        assert all(rule.get("help") for rule in locale["rules"].values())

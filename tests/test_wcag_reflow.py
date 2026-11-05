@@ -85,3 +85,20 @@ class TestCheckReflow:
     def test_url_defaults_to_current_url(self) -> None:
         driver = _FakeDriver(scroll_width=900)
         assert check_reflow(driver)[0].url == "https://x/current"
+
+
+class TestDutch:
+    """The message renders in Dutch with ``lang="nl"``; the finding is unchanged."""
+
+    def test_overflow_message_is_dutch_with_widths(self) -> None:
+        (finding,) = evaluate_reflow(
+            {"scroll_width": 900, "client_width": 320}, "u", lang="nl"
+        )
+        assert finding.message.startswith(
+            f"Bij een viewport van {REFLOW_WIDTH} CSS-px is de content van de "
+            "pagina 900px breed"
+        )
+        assert "(viewport 320px)" in finding.message
+        assert (finding.criterion, finding.severity, finding.selector) == (
+            "1.4.10", "needs-review", None,
+        )

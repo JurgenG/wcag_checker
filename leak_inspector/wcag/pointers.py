@@ -43,12 +43,15 @@ Design mirrors :mod:`.media`: one impure gatherer (:func:`check_pointers`,
 a single read-only ``execute_script``) and a pure evaluator
 (:func:`evaluate_pointers`) the hermetic tests drive with canned data.
 Boundary: takes a live driver from the caller; never launches or closes it.
+Messages are written in the ``lang`` passed to :func:`check_pointers` /
+:func:`evaluate_pointers` (see :mod:`leak_inspector.i18n`).
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from ..i18n import SOURCE_LANG, tr
 from .core import Finding
 
 #: Cap on how many elements of each kind one page is inspected for, so a
@@ -128,52 +131,64 @@ return {live, passwords, captchas, search, navs, sitemap, help};
 """
 
 
-def check_pointers(driver: Any, url: str | None = None) -> list[Finding]:
+def check_pointers(
+    driver: Any, url: str | None = None, *, lang: str = SOURCE_LANG
+) -> list[Finding]:
     """Locate the review-pointer elements on the live page and flag them.
 
     ``driver`` is a live Selenium WebDriver on the page to inspect; the
     caller owns its lifecycle. ``url`` labels the findings; when omitted it
     is read from ``driver.current_url``. Read-only: one ``execute_script``
     that reads the DOM and mutates nothing. Returns ``needs-review``
-    findings (possibly empty).
+    findings (possibly empty), with messages in ``lang``.
     """
     page_url = url if url is not None else driver.current_url
     data = driver.execute_script(_POINTERS_JS, _MAX_PER_KIND)
-    return evaluate_pointers(data, page_url)
+    return evaluate_pointers(data, page_url, lang=lang)
 
 
-def evaluate_pointers(data: dict[str, Any], url: str) -> list[Finding]:
+def evaluate_pointers(
+    data: dict[str, Any], url: str, *, lang: str = SOURCE_LANG
+) -> list[Finding]:
     """Turn the located elements into review-pointer findings (pure).
 
     ``data`` groups the located elements by kind (``live``, ``passwords``,
     ``captchas``, ``search``, ``navs``, ``sitemap``, ``help``). Emits
     ``needs-review`` findings for 4.1.3, 3.3.8, 2.4.5, and 3.2.6, each
-    pointing at the specific element(s) a reviewer must verify.
+    pointing at the specific element(s) a reviewer must verify, with
+    messages in ``lang``.
     """
     findings: list[Finding] = []
-    findings += _status_findings(data.get("live") or [], url)
+    findings += _status_findings(data.get("live") or [], url, lang)
     findings += _auth_findings(
-        data.get("passwords") or [], data.get("captchas") or [], url
+        data.get("passwords") or [], data.get("captchas") or [], url, lang
     )
     findings += _ways_findings(
-        data.get("search") or [], data.get("navs") or [], data.get("sitemap") or [], url
+        data.get("search") or [],
+        data.get("navs") or [],
+        data.get("sitemap") or [],
+        url,
+        lang,
     )
-    findings += _help_findings(data.get("help") or [], url)
+    findings += _help_findings(data.get("help") or [], url, lang)
     return findings
 
 
-def _status_findings(live: list[dict[str, Any]], url: str) -> list[Finding]:
+def _status_findings(
+    live: list[dict[str, Any]], url: str, lang: str
+) -> list[Finding]:
     """4.1.3 — point at each live region, or note that none was found."""
     if not live:
         return [
             Finding(
                 criterion="4.1.3",
                 severity="needs-review",
-                message=(
+                message=tr(
+                    lang,
                     "No ARIA live region (role=status/alert/log or aria-live) was "
                     "found. If the page shows status messages without reloading "
                     "(form errors, 'saved', result counts, cart updates), they are "
-                    "probably not announced to screen readers — check WCAG 4.1.3."
+                    "probably not announced to screen readers — check WCAG 4.1.3.",
                 ),
                 selector=None,
                 url=url,
@@ -183,15 +198,19 @@ def _status_findings(live: list[dict[str, Any]], url: str) -> list[Finding]:
     for region in live:
         role = region.get("role")
         live_val = region.get("ariaLive")
-        where = role or (f"aria-live={live_val}" if live_val else "live region")
+        where = role or (
+            f"aria-live={live_val}" if live_val else tr(lang, "live region")
+        )
         out.append(
             Finding(
                 criterion="4.1.3",
                 severity="needs-review",
-                message=(
-                    f"A live region ({where}) was found. Confirm the page routes "
+                message=tr(
+                    lang,
+                    "A live region ({where}) was found. Confirm the page routes "
                     "its status messages (errors, 'saved', result counts) through "
-                    "it so they are announced without moving focus (WCAG 4.1.3)."
+                    "it so they are announced without moving focus (WCAG 4.1.3).",
+                    where=where,
                 ),
                 selector=region.get("selector"),
                 url=url,
@@ -201,7 +220,10 @@ def _status_findings(live: list[dict[str, Any]], url: str) -> list[Finding]:
 
 
 def _auth_findings(
-    passwords: list[dict[str, Any]], captchas: list[dict[str, Any]], url: str
+    passwords: list[dict[str, Any]],
+    captchas: list[dict[str, Any]],
+    url: str,
+    lang: str,
 ) -> list[Finding]:
     """3.3.8 — point at login password fields and CAPTCHA widgets."""
     out: list[Finding] = []
@@ -210,12 +232,13 @@ def _auth_findings(
             Finding(
                 criterion="3.3.8",
                 severity="needs-review",
-                message=(
+                message=tr(
+                    lang,
                     "A password field was found (a login/authentication step). "
                     "Confirm it does not rely on a cognitive function test: the "
                     "browser and password managers must be able to fill or paste "
                     "it, and no un-assisted memorisation or transcription is "
-                    "required (WCAG 3.3.8)."
+                    "required (WCAG 3.3.8).",
                 ),
                 selector=field.get("selector"),
                 url=url,
@@ -227,10 +250,12 @@ def _auth_findings(
             Finding(
                 criterion="3.3.8",
                 severity="needs-review",
-                message=(
-                    f"A {kind} was found. Confirm an accessible alternative to the "
+                message=tr(
+                    lang,
+                    "A {kind} was found. Confirm an accessible alternative to the "
                     "cognitive test exists (e.g. an audio challenge, an email/link "
-                    "sign-in, or object recognition) (WCAG 3.3.8)."
+                    "sign-in, or object recognition) (WCAG 3.3.8).",
+                    kind=kind,
                 ),
                 selector=widget.get("selector"),
                 url=url,
@@ -244,36 +269,44 @@ def _ways_findings(
     navs: list[dict[str, Any]],
     sitemap: list[dict[str, Any]],
     url: str,
+    lang: str,
 ) -> list[Finding]:
     """2.4.5 — report which location mechanisms were found (one finding)."""
     mechanisms: list[str] = []
     if search:
-        mechanisms.append("a search field")
+        mechanisms.append(tr(lang, "a search field"))
     if navs:
-        mechanisms.append("site navigation")
+        mechanisms.append(tr(lang, "site navigation"))
     if sitemap:
-        mechanisms.append("a sitemap link")
+        mechanisms.append(tr(lang, "a sitemap link"))
     primary = search or navs or sitemap
     selector = primary[0].get("selector") if primary else None
 
     if not mechanisms:
-        message = (
+        message = tr(
+            lang,
             "No obvious way to locate this page was detected (no search field, "
             "site navigation, or sitemap link). WCAG 2.4.5 needs at least two "
             "independent ways to find a page — verify manually (exempt if this "
-            "page is a step within a process)."
+            "page is a step within a process).",
+        )
+    elif len(mechanisms) >= 2:
+        message = tr(
+            lang,
+            "Ways to locate this page detected: {found}. WCAG 2.4.5 needs at "
+            "least two independent ways that lead here — confirm there are two "
+            "or more and each actually leads here (exempt if this page is a "
+            "step within a process).",
+            found=", ".join(mechanisms),
         )
     else:
-        found = ", ".join(mechanisms)
-        tail = (
-            "there are two or more and each actually leads here"
-            if len(mechanisms) >= 2
-            else "at least one more independent way exists"
-        )
-        message = (
-            f"Ways to locate this page detected: {found}. WCAG 2.4.5 needs at "
-            f"least two independent ways that lead here — confirm {tail} (exempt "
-            "if this page is a step within a process)."
+        message = tr(
+            lang,
+            "Ways to locate this page detected: {found}. WCAG 2.4.5 needs at "
+            "least two independent ways that lead here — confirm at least one "
+            "more independent way exists (exempt if this page is a step within "
+            "a process).",
+            found=", ".join(mechanisms),
         )
     return [
         Finding(
@@ -286,7 +319,9 @@ def _ways_findings(
     ]
 
 
-def _help_findings(help_links: list[dict[str, Any]], url: str) -> list[Finding]:
+def _help_findings(
+    help_links: list[dict[str, Any]], url: str, lang: str
+) -> list[Finding]:
     """3.2.6 — point at help/contact mechanisms (one summary finding)."""
     if not help_links:
         return []
@@ -300,16 +335,18 @@ def _help_findings(help_links: list[dict[str, Any]], url: str) -> list[Finding]:
     examples = (
         ", ".join(f"“{label}”" for label in labels)
         if labels
-        else "a help/contact link"
+        else tr(lang, "a help/contact link")
     )
     return [
         Finding(
             criterion="3.2.6",
             severity="needs-review",
-            message=(
-                f"Help/contact mechanism(s) found ({examples}). WCAG 3.2.6 needs "
+            message=tr(
+                lang,
+                "Help/contact mechanism(s) found ({examples}). WCAG 3.2.6 needs "
                 "help that is offered to appear in the same relative order on every "
-                "page that has it — compare its placement across the audited pages."
+                "page that has it — compare its placement across the audited pages.",
+                examples=examples,
             ),
             selector=help_links[0].get("selector"),
             url=url,

@@ -92,9 +92,29 @@ class TestCheckGatherers:
         from leak_inspector.wcag import content
 
         monkeypatch.setattr(
-            content, "check_link_purpose", lambda d, u: [object()]
+            content, "check_link_purpose", lambda d, u, lang: [object()]
         )
         monkeypatch.setattr(
-            content, "check_empty_headings", lambda d, u: [object(), object()]
+            content, "check_empty_headings", lambda d, u, lang: [object(), object()]
         )
         assert len(run_all(_FakeDriver([]), "u")) == 3
+
+
+class TestDutch:
+    """Messages render in Dutch with ``lang="nl"``; the findings are unchanged."""
+
+    def test_link_purpose_is_dutch_with_link_text(self) -> None:
+        (finding,) = evaluate_link_purpose(
+            [{"name": "click here", "selector": "a#1"}], "u", lang="nl"
+        )
+        assert finding.message.startswith("Linktekst 'click here' beschrijft het linkdoel")
+        assert (finding.criterion, finding.severity, finding.selector) == (
+            "2.4.4", "needs-review", "a#1",
+        )
+
+    def test_empty_heading_is_dutch(self) -> None:
+        (finding,) = evaluate_empty_headings(
+            [{"empty": True, "selector": "h2"}], "u", lang="nl"
+        )
+        assert finding.message.startswith("Deze kop heeft geen tekst")
+        assert (finding.criterion, finding.selector) == ("2.4.6", "h2")

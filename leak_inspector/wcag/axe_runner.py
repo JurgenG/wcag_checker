@@ -37,6 +37,12 @@ from two engines. axe-core 4.10.2 ships its ``target-size`` rule disabled
 by default, so this is latent today, but the drop keeps it from
 surfacing if a future axe release enables that rule.
 
+Language: with a ``lang`` other than English, axe-core is configured with
+the bundled translation of its messages (``locales/axe-<lang>.json``)
+before it runs, so rule titles and failure summaries come back in that
+language; this module's own framing text is translated via
+:mod:`leak_inspector.i18n`.
+
 Boundary: takes a live driver from the caller and runs against it. It
 never launches, configures, or closes the browser session — that belongs
 to the capture/session layer.
@@ -45,8 +51,10 @@ to the capture/session layer.
 from __future__ import annotations
 
 import json
+from importlib import resources
 from typing import Any
 
+from ..i18n import SOURCE_LANG, tr
 from .core import CRITERIA_BY_ID, Finding, Severity
 
 #: The WCAG 2.2 AA tag set passed to axe-core's ``runOnly`` filter, so a
@@ -95,12 +103,15 @@ _RULES_FORCED_REVIEW = frozenset(ENABLED_EXPERIMENTAL_RULES)
 _CRITERIA_OWNED_ELSEWHERE = frozenset({"1.2.1", "1.2.3", "2.5.8"})
 
 
-def audit(driver: Any, url: str | None = None) -> list[Finding]:
+def audit(
+    driver: Any, url: str | None = None, *, lang: str = SOURCE_LANG
+) -> list[Finding]:
     """Inject axe-core, run the AA rule set, and normalize the results.
 
     ``driver`` is a live Selenium WebDriver on the page to audit; the
     caller owns its lifecycle. ``url`` labels the findings; when omitted
-    it is read from ``driver.current_url``.
+    it is read from ``driver.current_url``. ``lang`` is the language of
+    the finding messages.
 
     Side effect: injects and executes axe-core JavaScript in the current
     browsing context. Returns the findings (possibly empty); an empty
@@ -108,15 +119,16 @@ def audit(driver: Any, url: str | None = None) -> list[Finding]:
     conforms.
     """
     page_url = url if url is not None else driver.current_url
-    results = run_axe(driver)
-    return normalize_results(results, page_url)
+    results = run_axe(driver, lang=lang)
+    return normalize_results(results, page_url, lang=lang)
 
 
-def run_axe(driver: Any) -> dict[str, Any]:
+def run_axe(driver: Any, *, lang: str = SOURCE_LANG) -> dict[str, Any]:
     """Inject axe-core into ``driver`` and return its raw results dict.
 
     Restricts the run to :data:`AA_TAG_SET` and additionally enables the
-    :data:`ENABLED_EXPERIMENTAL_RULES`. Imports ``axe-selenium-python``
+    :data:`ENABLED_EXPERIMENTAL_RULES`. For a ``lang`` other than English,
+    configures axe with its bundled message translation first. Imports ``axe-selenium-python``
     lazily so the pure normalization helpers in this module stay importable
     — and testable — without a browser stack installed. Side effect:
     executes JavaScript on the live driver.
@@ -125,7 +137,21 @@ def run_axe(driver: Any) -> dict[str, Any]:
 
     axe = Axe(driver)
     axe.inject()
+    if lang != SOURCE_LANG:
+        driver.execute_script(
+            "axe.configure({locale: arguments[0]});", axe_locale(lang)
+        )
     return axe.run(options=_run_options())
+
+
+def axe_locale(lang: str) -> dict[str, Any]:
+    """Return the bundled axe-core message translation for ``lang``.
+
+    Reads ``locales/axe-<lang>.json`` from this package. Raises
+    :class:`FileNotFoundError` when no translation is bundled for ``lang``.
+    """
+    path = resources.files(__package__) / "locales" / f"axe-{lang}.json"
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _run_options() -> str:
@@ -143,7 +169,9 @@ def _run_options() -> str:
     return json.dumps(options)
 
 
-def normalize_results(results: dict[str, Any], url: str) -> list[Finding]:
+def normalize_results(
+    results: dict[str, Any], url: str, *, lang: str = SOURCE_LANG
+) -> list[Finding]:
     """Convert a raw axe results dict into a flat list of findings.
 
     Pure. ``results`` is the structure returned by ``Axe.run`` (with
@@ -151,18 +179,19 @@ def normalize_results(results: dict[str, Any], url: str) -> list[Finding]:
     ``"error"``/``"warning"`` by axe impact; incomplete results map to
     ``"needs-review"``. Each result is expanded to one finding per
     offending node per WCAG criterion its tags implicate; results whose
-    tags map to no registered criterion are skipped.
+    tags map to no registered criterion are skipped. ``lang`` is the
+    language of the framing text in each message.
     """
     findings: list[Finding] = []
     for result in results.get("violations", ()):
-        findings.extend(_findings_for_result(result, url, incomplete=False))
+        findings.extend(_findings_for_result(result, url, incomplete=False, lang=lang))
     for result in results.get("incomplete", ()):
-        findings.extend(_findings_for_result(result, url, incomplete=True))
+        findings.extend(_findings_for_result(result, url, incomplete=True, lang=lang))
     return findings
 
 
 def _findings_for_result(
-    result: dict[str, Any], url: str, *, incomplete: bool
+    result: dict[str, Any], url: str, *, incomplete: bool, lang: str
 ) -> list[Finding]:
     """Expand one axe result into findings, one per node per criterion."""
     criteria = [
@@ -183,7 +212,7 @@ def _findings_for_result(
     nodes = result.get("nodes") or ({},)
     findings: list[Finding] = []
     for node in nodes:
-        message = _build_message(result, node, incomplete=incomplete)
+        message = _build_message(result, node, incomplete=incomplete, lang=lang)
         selector = _node_selector(node)
         for criterion_id in criteria:
             findings.append(
@@ -251,7 +280,7 @@ def _node_selector(node: dict[str, Any]) -> str | None:
 
 
 def _build_message(
-    result: dict[str, Any], node: dict[str, Any], *, incomplete: bool
+    result: dict[str, Any], node: dict[str, Any], *, incomplete: bool, lang: str
 ) -> str:
     """Compose a human-readable message from an axe result and node.
 
@@ -260,7 +289,7 @@ def _build_message(
     provenance without the caller re-reading the raw axe output.
     """
     rule_id = result.get("id", "unknown")
-    prefix = "needs review" if incomplete else "violation"
+    prefix = tr(lang, "needs review") if incomplete else tr(lang, "violation")
     parts = [f"[{rule_id}] {prefix}: {result.get('help', '').strip()}"]
 
     summary = (node.get("failureSummary") or "").strip()
@@ -269,7 +298,7 @@ def _build_message(
 
     help_url = (result.get("helpUrl") or "").strip()
     if help_url:
-        parts.append(f"See {help_url}")
+        parts.append(tr(lang, "See {url}", url=help_url))
 
     return " — ".join(parts)
 
@@ -277,6 +306,7 @@ def _build_message(
 __all__ = [
     "AA_TAG_SET",
     "audit",
+    "axe_locale",
     "criteria_from_tags",
     "normalize_results",
     "run_axe",

@@ -48,6 +48,8 @@ Design mirrors :mod:`.keyboard_nav`: an impure gatherer (:func:`check_media`,
 one ``execute_script`` over the live DOM) and a pure evaluator
 (:func:`evaluate_media`) that the hermetic tests drive with canned data.
 Boundary: takes a live driver from the caller; never launches or closes it.
+Messages are written in the ``lang`` passed to :func:`check_media` /
+:func:`evaluate_media` (see :mod:`leak_inspector.i18n`).
 """
 
 from __future__ import annotations
@@ -55,6 +57,7 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import urlparse
 
+from ..i18n import SOURCE_LANG, tr
 from .core import Finding
 
 #: Cap on how many media/iframe elements one page is inspected for, so a
@@ -113,7 +116,9 @@ return out;
 """
 
 
-def check_media(driver: Any, url: str | None = None) -> list[Finding]:
+def check_media(
+    driver: Any, url: str | None = None, *, lang: str = SOURCE_LANG
+) -> list[Finding]:
     """Inventory media/embeds and flag 1.2.x candidates.
 
     ``driver`` is a live Selenium WebDriver on the page to inspect; the
@@ -121,14 +126,16 @@ def check_media(driver: Any, url: str | None = None) -> list[Finding]:
     is read from ``driver.current_url``. Read-only: one ``execute_script``
     that reads the DOM and mutates nothing. Returns ``needs-review``
     findings (possibly empty); an empty list means no media or iframe was
-    found, never that the criteria pass.
+    found, never that the criteria pass. Messages are in ``lang``.
     """
     page_url = url if url is not None else driver.current_url
     records = driver.execute_script(_MEDIA_JS, _MAX_MEDIA)
-    return evaluate_media(records, page_url)
+    return evaluate_media(records, page_url, lang=lang)
 
 
-def evaluate_media(records: list[dict[str, Any]], url: str) -> list[Finding]:
+def evaluate_media(
+    records: list[dict[str, Any]], url: str, *, lang: str = SOURCE_LANG
+) -> list[Finding]:
     """Turn a media/iframe inventory into 1.2.x findings (pure).
 
     Each record is either a native-media record (``type`` ``"media"``,
@@ -138,18 +145,19 @@ def evaluate_media(records: list[dict[str, Any]], url: str) -> list[Finding]:
     candidate stating the caption/subtitle/description tracks found;
     YouTube/Vimeo embeds yield captions (1.2.2) + audio-description (1.2.3)
     candidates flagged as un-auditable; any other iframe yields a 1.2.1
-    "review this embed" candidate. All findings are ``needs-review``.
+    "review this embed" candidate. All findings are ``needs-review``,
+    with messages in ``lang``.
     """
     findings: list[Finding] = []
     for record in records:
         if record.get("type") == "iframe" or "src" in record:
-            findings.extend(_iframe_findings(record, url))
+            findings.extend(_iframe_findings(record, url, lang))
             continue
         tag = record.get("tag")
         if tag == "video":
-            findings.append(_video_finding(record, url))
+            findings.append(_video_finding(record, url, lang))
         elif tag == "audio":
-            findings.append(_audio_finding(record, url))
+            findings.append(_audio_finding(record, url, lang))
     return findings
 
 
@@ -162,51 +170,58 @@ def _track_kinds(record: dict[str, Any]) -> list[str]:
     ]
 
 
-def _yn(present: bool) -> str:
+def _yn(present: bool, lang: str) -> str:
     """Render a detected/absent flag as ``yes``/``no`` for a message."""
-    return "yes" if present else "no"
+    return tr(lang, "yes") if present else tr(lang, "no")
 
 
-def _video_finding(record: dict[str, Any], url: str) -> Finding:
+def _video_finding(record: dict[str, Any], url: str, lang: str) -> Finding:
     """Build the 1.2.3 candidate for a native ``<video>`` (states its tracks)."""
     kinds = _track_kinds(record)
-    detected = (
-        f"captions: {_yn(_CAPTIONS_KIND in kinds)}, "
-        f"subtitles: {_yn(_SUBTITLES_KIND in kinds)}, "
-        f"descriptions: {_yn(_DESCRIPTIONS_KIND in kinds)}"
-    )
     return Finding(
         criterion="1.2.3",
         severity="needs-review",
-        message=(
-            f"A <video> element is present. Detected text tracks — {detected}. "
+        message=tr(
+            lang,
+            "A <video> element is present. Detected text tracks — captions: "
+            "{captions}, subtitles: {subtitles}, descriptions: {descriptions}. "
             "WCAG 1.2.3 needs an audio description or a full text alternative "
             "for information conveyed visually — confirm one is provided (it "
             "may be a described version or transcript, not a <track>, so a "
-            "human must check). Captions (1.2.2) are evaluated separately."
+            "human must check). Captions (1.2.2) are evaluated separately.",
+            captions=_yn(_CAPTIONS_KIND in kinds, lang),
+            subtitles=_yn(_SUBTITLES_KIND in kinds, lang),
+            descriptions=_yn(_DESCRIPTIONS_KIND in kinds, lang),
         ),
         selector=record.get("selector"),
         url=url,
     )
 
 
-def _audio_finding(record: dict[str, Any], url: str) -> Finding:
+def _audio_finding(record: dict[str, Any], url: str, lang: str) -> Finding:
     """Build the 1.2.1 transcript candidate for a native ``<audio>``."""
     kinds = [k for k in _track_kinds(record) if k]
     extra = (
-        f" (It also declares text track(s): {', '.join(sorted(set(kinds)))}.)"
+        " "
+        + tr(
+            lang,
+            "(It also declares text track(s): {kinds}.)",
+            kinds=", ".join(sorted(set(kinds))),
+        )
         if kinds
         else ""
     )
     return Finding(
         criterion="1.2.1",
         severity="needs-review",
-        message=(
+        message=tr(
+            lang,
             "An <audio> element is present. If it is prerecorded audio-only, "
             "WCAG 1.2.1 requires an equivalent text transcript — confirm one is "
             "provided (a transcript elsewhere on the page cannot be detected "
-            "automatically)." + extra
-        ),
+            "automatically).",
+        )
+        + extra,
         selector=record.get("selector"),
         url=url,
     )
@@ -222,7 +237,9 @@ def _provider(src: str) -> str | None:
     return None
 
 
-def _iframe_findings(record: dict[str, Any], url: str) -> list[Finding]:
+def _iframe_findings(
+    record: dict[str, Any], url: str, lang: str
+) -> list[Finding]:
     """Build the un-auditable-embed candidate(s) for an ``<iframe>``.
 
     A recognized YouTube/Vimeo embed yields two candidates (captions 1.2.2
@@ -235,46 +252,85 @@ def _iframe_findings(record: dict[str, Any], url: str) -> list[Finding]:
     selector = record.get("selector")
     provider = _provider(src)
     if provider is not None:
-        lead = (
-            f"A {provider} video embed is present, but its contents cannot be "
-            "inspected automatically (cross-origin <iframe>)."
-        )
         return [
             Finding(
                 criterion="1.2.2",
                 severity="needs-review",
-                message=lead + " Confirm synchronized captions are available (WCAG 1.2.2).",
+                message=tr(
+                    lang,
+                    "A {provider} video embed is present, but its contents "
+                    "cannot be inspected automatically (cross-origin <iframe>). "
+                    "Confirm synchronized captions are available (WCAG 1.2.2).",
+                    provider=provider,
+                ),
                 selector=selector,
                 url=url,
             ),
             Finding(
                 criterion="1.2.3",
                 severity="needs-review",
-                message=(
-                    lead + " Confirm an audio description or full text "
-                    "alternative is available (WCAG 1.2.3)."
+                message=tr(
+                    lang,
+                    "A {provider} video embed is present, but its contents "
+                    "cannot be inspected automatically (cross-origin <iframe>). "
+                    "Confirm an audio description or full text alternative is "
+                    "available (WCAG 1.2.3).",
+                    provider=provider,
                 ),
                 selector=selector,
                 url=url,
             ),
         ]
     host = (urlparse(src).hostname or "").lower()
-    where = f"from {host}" if host else "with no external src"
-    label = f", title “{title}”" if title else ""
+    message = (
+        _iframe_lead(host, title, lang)
+        + " "
+        + tr(
+            lang,
+            "If it presents time-based media (audio or video), WCAG 1.2.1–1.2.5 "
+            "apply — review it manually; if it is not media (e.g. a map, form, "
+            "or advert), mark N/A.",
+        )
+    )
     return [
         Finding(
             criterion="1.2.1",
             severity="needs-review",
-            message=(
-                f"An <iframe> embed ({where}{label}) could not be audited "
-                "automatically. If it presents time-based media (audio or "
-                "video), WCAG 1.2.1–1.2.5 apply — review it manually; if it "
-                "is not media (e.g. a map, form, or advert), mark N/A."
-            ),
+            message=message,
             selector=selector,
             url=url,
         )
     ]
+
+
+def _iframe_lead(host: str, title: str, lang: str) -> str:
+    """First sentence of the generic-iframe candidate: where it comes from."""
+    if host and title:
+        return tr(
+            lang,
+            "An <iframe> embed (from {host}, title “{title}”) could not be "
+            "audited automatically.",
+            host=host,
+            title=title,
+        )
+    if host:
+        return tr(
+            lang,
+            "An <iframe> embed (from {host}) could not be audited automatically.",
+            host=host,
+        )
+    if title:
+        return tr(
+            lang,
+            "An <iframe> embed (with no external src, title “{title}”) could "
+            "not be audited automatically.",
+            title=title,
+        )
+    return tr(
+        lang,
+        "An <iframe> embed (with no external src) could not be audited "
+        "automatically.",
+    )
 
 
 __all__ = ["check_media", "evaluate_media"]

@@ -60,6 +60,12 @@ criterion the underlying engine cannot actually decide — an honest
   - `reporter.py` — groups findings by criterion and renders JSON
     (canonical), text, Markdown, HTML and JIRA tickets, always with a
     coverage summary.
+- **Languages** (`leak_inspector/i18n/`) — `tr(lang, "English {x}", x=…)`
+  translates user-facing text; `N_()` marks constants translated later.
+  `nl/` holds the Dutch catalog (per area) and the official W3C Dutch
+  criterion titles; `wcag/locales/axe-nl.json` translates axe-core's own
+  messages. `--lang` (default `nl`) is threaded from the CLI through the
+  session into every check, the report document and the checklist.
 - **Session + CLI** — `session.py` (interactive and `--once` runs),
   `batch.py` (URL lists), `cli.py` / `cli_batch.py` (argument parsing).
   Reports are written on window close.
@@ -101,6 +107,13 @@ Constraints:
   describing **purpose, inputs, outputs, and side effects**.
 - Each WCAG check names the criterion id(s) it supports in its docstring.
 - Inline comments are rare and explain a non-obvious *why*.
+- All user-facing text (reports, findings, checklist, CLI help and
+  messages) is English source passed through `tr()` — never an f-string
+  inside `tr()`; use `{named}` placeholders and translate whole
+  sentences. Add the Dutch translation to `i18n/nl/` in the same change;
+  `tests/test_i18n.py` fails on missing, stale or mismatched entries.
+  WCAG terms follow the W3C Authorized Dutch Translation.
+  Machine-readable values in the JSON outputs are never translated.
 
 ## Project documentation
 

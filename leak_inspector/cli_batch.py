@@ -18,8 +18,10 @@
 """``wcag-batch`` command line: audit a list of URLs non-interactively.
 
 Thin argument-parsing wrapper over :func:`leak_inspector.batch.run_batch`.
-Reads a plain-text URL list (one per line), audits each into its own
-report subdirectory, and writes an aggregate ``summary.{json,md,html}``.
+Reads a URL list (one URL per line, or two comma-separated columns with a
+name and a URL), audits each into its own report subdirectory, and writes
+an aggregate ``summary.{json,md,html}``. ``--lang`` chooses the language
+of the reports, the summary, and this command's messages and help.
 """
 
 from __future__ import annotations
@@ -28,81 +30,114 @@ import argparse
 from pathlib import Path
 
 from . import batch, session
-
-_DESCRIPTION = (
-    "Audit every URL in a list file for WCAG 2.2 AA issues, one report "
-    "directory per site plus an aggregate summary. A clean run is not a "
-    "conformance claim."
-)
+from .cli import REMINDER, add_lang_argument, chosen_lang
+from .i18n import DEFAULT_LANG, tr
 
 
-def build_parser() -> argparse.ArgumentParser:
-    """Construct the ``wcag-batch`` argument parser."""
-    parser = argparse.ArgumentParser(prog="wcag-batch", description=_DESCRIPTION)
+def build_parser(lang: str = DEFAULT_LANG) -> argparse.ArgumentParser:
+    """Construct the ``wcag-batch`` argument parser, with help in ``lang``."""
+    parser = argparse.ArgumentParser(
+        prog="wcag-batch",
+        description=tr(
+            lang,
+            "Audit every URL in a list file for WCAG 2.2 AA issues, one report "
+            "directory per site plus an aggregate summary. A clean run is not "
+            "a conformance claim.",
+        ),
+    )
     parser.add_argument(
         "urls_file",
         type=Path,
-        help="text file with one URL per line (# comments and blanks ignored)",
+        help=tr(
+            lang,
+            "text file with one URL per line, or name,url pairs (# comments "
+            "and blanks ignored)",
+        ),
     )
     parser.add_argument(
         "--out",
         type=Path,
         default=Path("runs"),
-        help="directory for the per-site reports + summary (default: runs/)",
+        help=tr(lang, "directory for the per-site reports + summary (default: runs/)"),
     )
     parser.add_argument(
         "--limit",
         type=int,
         default=None,
-        help="audit only the first N URLs (default: all)",
+        help=tr(lang, "audit only the first N URLs (default: all)"),
     )
     parser.add_argument(
         "--headless",
         action="store_true",
-        help="run Firefox hidden (focus/keyboard checks are less reliable)",
+        help=tr(lang, "run Firefox hidden (focus/keyboard checks are less reliable)"),
     )
     parser.add_argument(
         "--width",
         type=int,
         default=None,
         metavar="PX",
-        help=(
+        help=tr(
+            lang,
             "resize the browser window to this pixel width before auditing "
             "every site, to check responsive/mobile layouts (default: "
-            "Firefox's own window width)"
+            "Firefox's own window width)",
         ),
     )
     parser.add_argument(
         "--format",
         default="html",
         metavar="FMT",
-        help=(
+        help=tr(
+            lang,
             "per-site report format(s), comma-separated — choose from "
-            + ", ".join(session.FORMAT_CHOICES)
-            + " (default: %(default)s). 'jira-tickets' writes one ticket per "
-            "issue type per site into that site's jira/ subfolder."
+            "{choices} (default: %(default)s). 'jira-tickets' writes one "
+            "ticket per issue type per site into that site's jira/ subfolder.",
+            choices=", ".join(session.FORMAT_CHOICES),
         ),
     )
+    add_lang_argument(parser, lang)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     """Parse arguments, run the batch, and print a short summary."""
-    args = build_parser().parse_args(argv)
+    args = build_parser(chosen_lang(argv)).parse_args(argv)
+    lang = args.lang
 
     try:
         formats = session.parse_formats(args.format)
     except ValueError as exc:
-        print(f"Invalid --format {args.format!r}: {exc}")
+        print(
+            tr(
+                lang,
+                "Invalid --format {value}: {reason}",
+                value=repr(args.format),
+                reason=exc,
+            )
+        )
         return 2
 
     if args.width is not None and args.width <= 0:
-        print(f"Invalid --width {args.width!r}: must be a positive number of pixels")
+        print(
+            tr(
+                lang,
+                "Invalid --width {value}: must be a positive number of pixels",
+                value=repr(args.width),
+            )
+        )
         return 2
 
     urls = batch.read_urls(args.urls_file)
     planned = len(urls) if args.limit is None else min(len(urls), args.limit)
-    print(f"Auditing {planned} of {len(urls)} URL(s) from {args.urls_file}...")
+    print(
+        tr(
+            lang,
+            "Auditing {planned} of {total} URL(s) from {source}...",
+            planned=planned,
+            total=len(urls),
+            source=args.urls_file,
+        )
+    )
 
     result = batch.run_batch(
         urls,
@@ -112,13 +147,20 @@ def main(argv: list[str] | None = None) -> int:
         limit=args.limit,
         source=str(args.urls_file),
         formats=formats,
+        lang=lang,
     )
 
     audited = sum(1 for s in result.sites if s.status == "audited")
     failed = len(result.sites) - audited
-    print(f"Done: {audited} audited, {failed} failed.")
-    print(f"Summary + per-site reports written to {result.output_dir}/")
-    print("Reminder: a clean automated run does not imply WCAG 2.2 conformance.")
+    print(tr(lang, "Done: {audited} audited, {failed} failed.", audited=audited, failed=failed))
+    print(
+        tr(
+            lang,
+            "Summary + per-site reports written to {path}/",
+            path=result.output_dir,
+        )
+    )
+    print(tr(lang, REMINDER))
     return 0
 
 

@@ -125,12 +125,12 @@ class TestRunBatch:
         monkeypatch.setattr(
             batch,
             "launch_driver",
-            lambda *, headless=False, width=None: _FakeDriverCM(_FakeDriver()),
+            lambda *, headless=False, width=None, lang=None: _FakeDriverCM(_FakeDriver()),
         )
         monkeypatch.setattr(batch, "wait_until_settled", lambda driver: driver.last)
         monkeypatch.setattr(batch, "capture_text_view", lambda driver, url: None)
 
-        def fake_audit(driver, url, screenshot_dir):
+        def fake_audit(driver, url, screenshot_dir, **kw):
             if "boom" in url:
                 raise RuntimeError("nope")
             return [_finding("error"), _finding("needs-review")]
@@ -174,12 +174,12 @@ class TestRunBatch:
         monkeypatch.setattr(
             batch,
             "launch_driver",
-            lambda *, headless=False, width=None: _FakeDriverCM(_FakeDriver()),
+            lambda *, headless=False, width=None, lang=None: _FakeDriverCM(_FakeDriver()),
         )
         monkeypatch.setattr(batch, "wait_until_settled", lambda driver: driver.last)
         monkeypatch.setattr(batch, "capture_text_view", lambda driver, url: None)
 
-        def multiline_audit(driver, url, screenshot_dir):
+        def multiline_audit(driver, url, screenshot_dir, **kw):
             raise RuntimeError("first line\nstack frame 1\nstack frame 2")
 
         monkeypatch.setattr(batch, "audit_page", multiline_audit)
@@ -266,3 +266,44 @@ class TestSummaryRendering:
         assert rows["a.be"]["findings"] == {"error": 2, "warning": 1, "needs-review": 5}
         assert rows["b.be"]["report"] is None
         assert rows["b.be"]["status"] == "failed"
+
+    def test_summary_follows_lang(self) -> None:
+        md = render_summary_markdown(self._sites(), generated_at="T", source="s", lang="nl")
+        assert "# WCAG 2.2 AA-batchaudit" in md
+        assert "**mislukt**: Timeout: boom" in md
+        assert "1 geauditeerd, 1 mislukt" in md
+        html_out = render_summary_html(self._sites(), lang="nl")
+        assert '<html lang="nl">' in html_out
+        assert "<th>Te controleren</th>" in html_out
+        data = json.loads(render_summary_json(self._sites(), lang="nl"))
+        assert data["lang"] == "nl"
+        assert data["sites"][1]["status"] == "failed"  # machine value
+
+
+class TestBatchCli:
+    def test_lang_and_formats_are_passed_through(self, monkeypatch, tmp_path, capsys) -> None:
+        from leak_inspector import cli_batch
+        from leak_inspector.batch import BatchResult
+
+        urls_file = tmp_path / "urls.txt"
+        urls_file.write_text("https://a.be\n", encoding="utf-8")
+        calls: dict[str, object] = {}
+
+        def fake_run(urls, out, **kw):
+            calls.update(kw, urls=urls)
+            return BatchResult((), tmp_path, None, None, {})
+
+        monkeypatch.setattr(batch, "run_batch", fake_run)
+        assert cli_batch.main([str(urls_file), "--out", str(tmp_path)]) == 0
+        assert calls["lang"] == "nl"
+        assert calls["urls"] == [(None, "https://a.be")]
+        assert "Klaar: 0 geauditeerd, 0 mislukt." in capsys.readouterr().out
+
+        assert cli_batch.main([str(urls_file), "--lang", "en", "--format", "json"]) == 0
+        assert calls["lang"] == "en"
+        assert calls["formats"] == ("json",)
+
+    def test_invalid_format_is_rejected(self, tmp_path) -> None:
+        from leak_inspector import cli_batch
+
+        assert cli_batch.main([str(tmp_path / "x.txt"), "--format", "pdf"]) == 2

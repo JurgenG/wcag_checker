@@ -37,6 +37,8 @@ actually *lost* — and whether an exempt 2-D component is the cause —
 needs a human, so the finding is ``needs-review``. If BiDi viewport
 control is unavailable, the check reports nothing rather than guessing
 (the criterion still stands in the coverage table and manual checklist).
+The finding message is written in the ``lang`` passed to the check (see
+:mod:`leak_inspector.i18n`).
 
 Design mirrors :mod:`.keyboard_nav`: an impure gatherer
 (:func:`check_reflow`, which drives the live driver and mutates then
@@ -50,6 +52,7 @@ from __future__ import annotations
 from contextlib import suppress
 from typing import Any
 
+from ..i18n import SOURCE_LANG, tr
 from .core import Finding
 
 #: The WCAG 1.4.10 reflow width in CSS pixels.
@@ -70,7 +73,11 @@ _OVERFLOW_JS = (
 
 
 def check_reflow(
-    driver: Any, url: str | None = None, *, width: int = REFLOW_WIDTH
+    driver: Any,
+    url: str | None = None,
+    *,
+    width: int = REFLOW_WIDTH,
+    lang: str = SOURCE_LANG,
 ) -> list[Finding]:
     """Flag horizontal scrolling at a ``width``px viewport (1.4.10).
 
@@ -86,7 +93,7 @@ def check_reflow(
     record = _measure_reflow(driver, width)
     if record is None:
         return []
-    return evaluate_reflow(record, page_url, width=width)
+    return evaluate_reflow(record, page_url, width=width, lang=lang)
 
 
 def _measure_reflow(driver: Any, width: int) -> dict[str, int] | None:
@@ -125,7 +132,11 @@ def _measure_reflow(driver: Any, width: int) -> dict[str, int] | None:
 
 
 def evaluate_reflow(
-    record: dict[str, int], url: str, *, width: int = REFLOW_WIDTH
+    record: dict[str, int],
+    url: str,
+    *,
+    width: int = REFLOW_WIDTH,
+    lang: str = SOURCE_LANG,
 ) -> list[Finding]:
     """Turn a reflow measurement into a 1.4.10 finding (pure).
 
@@ -143,13 +154,17 @@ def evaluate_reflow(
         Finding(
             criterion="1.4.10",
             severity="needs-review",
-            message=(
-                f"At a {width} CSS-px viewport the page content is "
-                f"{scroll_width}px wide and scrolls horizontally (viewport "
-                f"{client_width}px). WCAG 1.4.10 requires content to reflow to "
+            message=tr(
+                lang,
+                "At a {width} CSS-px viewport the page content is "
+                "{scroll_width}px wide and scrolls horizontally (viewport "
+                "{client_width}px). WCAG 1.4.10 requires content to reflow to "
                 "one column with no horizontal scrolling at 320px. Confirm — "
                 "content that genuinely needs a two-dimensional layout (data "
-                "tables, maps) is exempt."
+                "tables, maps) is exempt.",
+                width=width,
+                scroll_width=scroll_width,
+                client_width=client_width,
             ),
             selector=None,
             url=url,
