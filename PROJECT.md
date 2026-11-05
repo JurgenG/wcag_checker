@@ -1,196 +1,162 @@
-# wcag-checker — project design
+# wcag-checker — design
 
-`wcag-checker` records a real, human-driven Firefox session and audits
-the pages the operator chooses for **WCAG 2.2 AA** conformance. It is a
-fork of the `leak_inspector` privacy tool, mid-conversion: it keeps that
-tool's browser-capture core (Selenium + Firefox + WebDriver BiDi) and its
-report-shape philosophy, and replaces the tracker-analysis pipeline with
-accessibility auditing.
+`wcag-checker` audits web pages for **WCAG 2.2 AA** accessibility in a
+real, human-driven Firefox session. This document describes how it is
+built. [`leak_inspector/wcag/core.py`](leak_inspector/wcag/core.py) is
+the authoritative source for the criteria registry; where this file and
+the code differ, the code is right and this file gets updated.
 
-This document is the design reference. `CLAUDE.md` is the working-rules
-anchor; `leak_inspector/wcag/core.py` is the authoritative source for the
-criteria registry. Where this file and the code disagree, the code wins —
-update this file.
+## Live auditing
 
-## The key design decision: audit live, not offline
+The audit runs inside the browser, on the page as it is on screen at the
+moment the operator presses the hotkey. Much of WCAG can only be judged
+on a live, rendered page:
 
-The fork's model was **capture now, analyze offline later**: record every
-request/response into a bundle, then run tracker modules over the frozen
-bundle with no browser in the loop. That works for network traffic
-because the bytes are the evidence.
-
-Accessibility is different. The evidence for most WCAG criteria exists
-*only in a live, fully-rendered browser*:
-
-- **Colour contrast** (1.4.3/1.4.6) needs computed styles — resolved
-  colours, fonts, and sizes after CSS cascade — not raw HTML.
-- **Focus behaviour** (2.4.7/2.4.11, 2.1.2, 2.4.3) only exists while the
-  page is interactive: you must move focus and observe what changes.
-- **Target size** (2.5.8) needs laid-out bounding boxes.
+- **Colour contrast** (1.4.3 / 1.4.6) uses computed styles: the colours,
+  fonts and sizes after the CSS cascade.
+- **Focus behaviour** (2.4.7 / 2.4.11, 2.1.2, 2.4.3) is observed by moving
+  focus through the page.
+- **Target size** (2.5.8) and **reflow** (1.4.10) use laid-out boxes.
 - **Interaction-revealed content** — menus, dialogs, consent banners,
-  client-side-rendered views — isn't in the initial DOM at all.
+  client-side views — exists only after the operator has interacted.
 
-So `wcag-checker` departs from the fork: the audit runs **on the live
-driver at the instant the operator presses the hotkey**, against exactly
-the page state a real visitor is looking at. There is no offline
-re-analysis phase — the judgement happens in the browser, and only the
-findings are persisted.
+Only the findings, screenshots and reading view are stored.
 
 ## End-to-end flow
 
-1. `wcag-checker <url> --out reports/` launches Firefox (BiDi enabled,
-   visible window) and navigates to the URL.
-2. The operator browses normally — clicking through flows, opening
-   menus, dismissing or accepting banners, navigating between pages.
-3. On any page worth checking, the operator presses the **audit hotkey**
-   (`Ctrl+Alt+A`). The tool audits the current live page: axe-core scan
-   + keyboard-navigation checks + an evidence screenshot. Findings are
-   tagged with the page URL and accumulated in memory. The operator can
-   press it on as many pages (or page states) as they like.
-4. Closing the Firefox window ends the session. The tool writes the
-   report set to `--out`.
+1. `wcag-checker <url>` launches a visible Firefox (WebDriver BiDi
+   enabled, fresh temporary profile) and opens the URL.
+2. The operator browses: clicks through flows, opens menus, handles
+   banners, logs in.
+3. On each page worth checking, the operator presses the audit hotkey
+   (`F9` by default). The tool audits the live page, tags every finding
+   with the page URL, captures a screenshot per flagged element, and
+   keeps the results in memory.
+4. Closing the Firefox window ends the session; the reports are written
+   to `<out>/<host>/` with a `YYYYMMDDHHMM_` prefix on each filename.
 
-Nothing is scripted or headless: focus and keyboard behaviour need a
-real desktop and a window a human is driving.
+`--once` runs steps 1, 3 and 4 automatically for a single page, after
+waiting for the page to settle. `wcag-batch` does the same for every URL
+in a list, reusing one Firefox, and writes a summary across sites.
 
-## The hotkey mechanism
+## The hotkey
 
-Adapted from the fork's screenshot signal (see
-`leak_inspector/capture/bidi.py`), now audit-only. At session start, a
-BiDi **preload script** is injected into every browsing context. It binds
-the hotkey on the document capture phase (so it fires before any page
-handler) and, on press, issues a `fetch()` to a reserved `*.invalid`
-**sentinel host** carrying the page host in a `?host=` query.
+`capture/hotkey.py` provides `HotkeyWatcher`. The session loop polls it
+on a timer. Each poll runs one `execute_script` call that:
 
-`.invalid` is RFC-2606-reserved, so the host never resolves — but BiDi's
-`network.beforeRequestSent` fires *before* the fetch is even attempted.
-The capture layer catches that request and fires a Python callback; that
-callback is the audit trigger. No OS-level keyboard hooks, no extra
-subscriptions — a clean in-band keypress → Python signal. (The WCAG tool
-keeps no event stream, so nothing is recorded; the sentinel fetch simply
-fails DNS and is ignored.)
+1. installs a `keydown` listener in the current document if it is not
+   there yet (so it is re-installed after every navigation), and
+2. reads and resets a counter of hotkey presses.
 
-`wcag-checker` binds `Ctrl+Alt+A` to run an audit (which also saves a
-screenshot of each flagged element as evidence). `Ctrl+Shift+*` shortcuts
-are deliberately avoided — e.g. `Ctrl+Shift+S` is Firefox's own
-screenshot shortcut, and `preventDefault` in a page handler does not
-block Firefox chrome shortcuts.
+When the count is non-zero, the session runs an audit. The key is matched
+by `KeyboardEvent.code`, so it works the same on every keyboard layout,
+and modifiers must match exactly (`ctrl+alt+shift+a` does not fire on
+`ctrl+alt+a`). Reading the counter uses only the WebDriver channel, so
+it works on pages with a strict Content-Security-Policy.
 
-## Modules and boundaries
+## Modules
 
-Everything WCAG-specific lives under `leak_inspector/wcag/` (the
-importable package is still named `leak_inspector` during conversion; the
-user-facing command is `wcag-checker`).
+The Python package is `leak_inspector`; the commands are `wcag-checker`
+and `wcag-batch`.
 
-- **`core.py`** — driver-free dataclasses (`WcagCriterion`, `Finding`)
-  and `CRITERIA_REGISTRY`, all 86 WCAG 2.2 success criteria tagged with
-  level (A/AA/AAA) and automatability tier. The single source of truth
-  for coverage claims. Imports nothing browser- or driver-specific.
-- **`axe_runner.py`** — wraps the axe-core engine via
-  `axe-selenium-python` (bundles axe-core 4.10.2). Injects axe, runs it
-  with the AA tag set, and normalizes violations + incomplete results
-  into `Finding` objects. Any rule suppression carries an inline comment
-  justifying the false-positive reasoning — findings are never silenced
-  just to make a run green.
-- **`keyboard_nav.py`** — the focus/keyboard-flow checks axe-core
-  deliberately skips, the highest-value custom code:
-  - focus visibility (2.4.7 / 2.4.11)
-  - no keyboard trap (2.1.2)
-  - tab / focus order vs. visual order (2.4.3)
-  - target size (2.5.8)
-- **`manual_checklist.py`** — generates the human-review checklist for
-  the criteria that cannot be asserted automatically (the majority),
-  pre-filled per page with the URL and any `needs-review` findings.
-- **`reporter.py`** — merges findings grouped by WCAG criterion (not by
-  rule id) and renders the output formats, always with a coverage
-  summary. Pure: findings in, strings out.
-- **Session runner + CLI** — orchestrates launch → per-hotkey live audit
-  → report, and writes the files.
+**Capture** (`leak_inspector/capture/`)
 
-Clean-boundary rules:
+- `driver.py` — launches Firefox through Selenium and geckodriver with
+  WebDriver BiDi, applies `--width`, and downloads a private Firefox when
+  none is installed.
+- `hotkey.py` — the hotkey watcher described above.
 
-- `core` imports none of the others; everything may import `core`.
-- `axe_runner` and `keyboard_nav` take a **live driver handle from the
-  caller** and run against it. They never launch, configure, or close the
-  browser — the session layer owns the driver lifecycle.
-- `reporter` is pure — it touches no network, driver, or filesystem. The
-  CLI writes the files.
-- `capture` drives the browser and raises the hotkey signal; it does not
-  import `wcag`. The session runner wires the callback.
+**Audit** (`leak_inspector/wcag/`)
 
-## WCAG methodology & automatability tiers
+- `core.py` — driver-free dataclasses (`WcagCriterion`, `Finding`) and
+  `CRITERIA_REGISTRY`: all 86 WCAG 2.2 success criteria with level
+  (A / AA / AAA) and coverage tier.
+- `axe_runner.py` — injects axe-core (bundled by `axe-selenium-python`),
+  runs it with the `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa` and
+  `wcag22aa` tags plus the `label-content-name-mismatch` rule, and turns
+  violations and incomplete results into `Finding`s grouped by WCAG
+  criterion.
+- `keyboard_nav.py` — focus visibility (2.4.7 / 2.4.11), keyboard traps
+  (2.1.2), focus order (2.4.3) and target size (2.5.8).
+- `media.py` — inventory of audio, video and embedded media (1.2.1,
+  1.2.2, 1.2.3).
+- `pointers.py` — review pointers to the elements behind 4.1.3, 3.3.8,
+  2.4.5 and 3.2.6.
+- `content.py` — generic link text (2.4.4) and empty headings (2.4.6).
+- `reflow.py` — 320 CSS-px viewport check for horizontal scrolling
+  (1.4.10); restores the operator's viewport afterwards.
+- `screenshot.py` — one PNG per flagged element, with the element
+  outlined.
+- `text_view.py` — the linearized reading view.
+- `manual_checklist.py` — step-by-step review questions per criterion,
+  per audited page.
+- `reporter.py` — builds one report document and renders it as JSON,
+  text, Markdown, HTML and JIRA tickets.
 
-WCAG 2.2 defines 86 success criteria (4.1.1 Parsing was removed).
-Empirically ~30% are fully automatable, ~10% partially, and ~60% require
-human judgement.
-`core.py` tags every criterion with one tier:
+**Session and CLI** (`leak_inspector/`)
 
-- **`full`** — a tool can decide the automatable substance on its own
-  (contrast, `lang` presence, name/role/value, page title, bypass
-  blocks). A machine pass is meaningful evidence.
-- **`partial`** — a tool flags *candidates*; a human confirms (link-text
-  quality, reflow, target size, focus order, headings/labels).
-- **`manual`** — needs human judgement; no assertion is emitted, only a
-  checklist item (meaningful-vs-present alt text, error-message quality,
-  plain language, media alternatives, consistent navigation).
+- `session.py` — interactive and `--once` runs: launch, poll, audit,
+  write reports.
+- `batch.py` — URL-list runs and the cross-site summary.
+- `cli.py`, `cli_batch.py` — argument parsing for `wcag-checker` and
+  `wcag-batch`.
 
-The central honesty stance: **a clean automated run is not conformance.**
-A `full`-tier pass means only that the automatable part found no defect —
-it says nothing about the criterion's manual aspects. The tiers describe
-*coverage*, never conformance, and every report states this explicitly.
-Never claim automated coverage of a criterion the engine cannot actually
-decide; when unsure, a criterion is `manual`.
+Each check splits into an impure **gatherer** (reads the live page) and
+a pure **evaluator** (turns the gathered data into findings),
+so the decision logic is unit-tested without a browser.
 
-axe-core is run with the AA tag set:
-`wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`, `wcag22aa`.
+### Boundaries
 
-## Report structure
+- `core` imports nothing browser- or driver-specific; every other module
+  may import it.
+- Checks receive a live driver from the session. The session owns the
+  browser's lifecycle.
+- `reporter` is pure: findings in, text out. The CLI writes the files.
+- `capture` does not import `wcag`; the session connects them.
 
-Written to the `--out` directory on session close:
+## Coverage tiers
 
-- **`results.json`** — the canonical machine-readable record: every
-  finding (criterion, severity, message, selector, page URL), the pages
-  audited, and the coverage summary. All other formats derive from it.
-- **text** — a terminal-readable report.
-- **Markdown** — a shareable report.
-- **HTML** — a single self-contained page (inline CSS, no external
-  assets), suitable for opening in a browser or attaching to a ticket.
-- **manual checklist** — the human-review items for the non-automatable
-  criteria, per audited page.
-- **evidence screenshots** — one per hotkey press, referenced by the
-  report.
+`core.py` gives every criterion one tier:
 
-Findings are **grouped by WCAG success criterion**, not by axe rule id,
-so a reader sees the report in the vocabulary of the standard. Severity
-is `error` (definite failure), `warning` (lower-impact definite failure),
-or `needs-review` (a candidate the tool cannot confirm — axe "incomplete"
-results and partial-tier keyboard checks). Every report leads with a
-**coverage summary**: how many criteria were actually exercised, and the
-standing reminder that manual review is still required.
+- **full** — the tool decides the automatable part (contrast, page
+  language, name/role/value, page title, bypass blocks).
+- **partial** — the tool flags candidates; a person confirms (link text,
+  reflow, target size, focus order, headings).
+- **manual** — a person decides, guided by the checklist and review
+  pointers (meaningful alt text, error-message quality, plain language,
+  consistent navigation).
 
-## Non-goals
+A criterion is tiered `full` only when the engine fully decides its
+automatable part. Every report shows the tier of every A + AA criterion
+and reminds the reader that conformance combines the automated results
+with the manual review. [docs/COVERAGE.md](docs/COVERAGE.md) lists
+the tiers in full.
 
-- **Headless / scripted browsing** — focus and keyboard behaviour need a
-  real desktop and a visible, human-driven window.
-- **Browsers other than Firefox.**
-- **Screen-reader announcement testing** (NVDA/JAWS/VoiceOver scripting)
-  — marked manual.
-- **Content-quality heuristics** (plain language, error-message
-  helpfulness) — marked manual; shipping a noisy heuristic is worse than
-  an honest checklist item.
-- **Always-on monitoring** and **active remediation** — this audits, it
-  does not fix or continuously watch.
-- **PDF export.**
-- **Silent axe suppressions** — every exclusion needs a justifying
-  comment.
+## Reports
+
+Written on session close, per website:
+
+- **`results.json`** — every finding (criterion, severity, impact,
+  message, selector, page URL, screenshot path), the coverage table and
+  the reading view.
+- **`report.html`**, **`report.md`**, **`report.txt`** — the same
+  content for people; HTML is a single file with inline styling.
+- **`jira/`** — one ticket per WCAG criterion.
+- **`manual-checklist.md`** — always written.
+- **`screenshots/`** — always written.
+
+Findings are grouped by WCAG success criterion and ordered by priority
+band (P1–P4). Severity is `error`, `warning` or `needs-review`; axe-core's
+grading is kept as `impact`. Every report opens with the priority
+overview and a coverage summary.
 
 ## Stack
 
-- Python ≥ 3.12, fully synchronous.
-- Runtime deps: `selenium` (drives Firefox and writes the element
-  screenshots) and `axe-selenium-python` (bundles axe-core 4.10.2).
-- System deps: Firefox + geckodriver (auto-provisioned by Selenium
-  Manager).
-- Tests: `pytest`, hermetic (no live browser / network) for the pure
-  logic; live checks guarded on Firefox availability.
-- License: **GPL-3.0-or-later**.
+- Python 3.12 or newer, fully synchronous.
+- `selenium` (drives Firefox, takes element screenshots) and
+  `axe-selenium-python` (bundles axe-core 4.10.2).
+- Firefox and geckodriver (geckodriver is downloaded automatically by
+  Selenium Manager).
+- Tests: `pytest`, hermetic — the pure logic is tested against canned
+  data, without a browser or network.
+- License: GPL-3.0-or-later.
