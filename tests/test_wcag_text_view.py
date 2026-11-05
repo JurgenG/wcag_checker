@@ -210,3 +210,22 @@ class TestReadingViewPayload:
 
     def test_empty_when_no_views(self) -> None:
         assert reading_view_payload([]) == []
+
+
+class TestDutch:
+    def test_sections_are_dutch(self) -> None:
+        view = _view(
+            TextNode(role="heading", name="", named=False, level=2),
+            TextNode(role="image", name="", named=False, note="no alt attribute"),
+        )
+        md = render_markdown_section([view], lang="nl")
+        assert md.startswith("## Leesweergave")
+        assert "⚠ (lege kop)" in md
+        assert "geen alt-attribuut" in md
+        assert "1 afbeelding(en) (1 zonder naam)" in md
+        assert "Leesweergave" in render_text_section([view], lang="nl")
+        assert "Leesweergave" in render_html_section([view], lang="nl")
+
+    def test_payload_keeps_raw_notes(self) -> None:
+        view = _view(TextNode(role="image", name="", named=False, note="no alt attribute"))
+        assert text_view.reading_view_payload([view])[0]["nodes"][0]["note"] == "no alt attribute"

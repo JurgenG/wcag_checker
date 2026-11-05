@@ -61,6 +61,9 @@ include = ["leak_inspector*"]
 [tool.setuptools]
 license-files = ["LICENSE"]
 
+[tool.setuptools.package-data]
+"leak_inspector.wcag" = ["locales/*.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

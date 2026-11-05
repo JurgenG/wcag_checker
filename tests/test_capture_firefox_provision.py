@@ -55,7 +55,7 @@ def test_present_firefox_does_not_provision_or_message(
 ) -> None:
     monkeypatch.setattr(driver_module, "firefox_available", lambda: True)
 
-    def boom() -> str:
+    def boom(*_args) -> str:
         raise AssertionError("must not provision when Firefox is present")
 
     monkeypatch.setattr(driver_module, "_provision_firefox", boom)
@@ -76,7 +76,7 @@ def test_absent_firefox_provisions_with_message(
 ) -> None:
     monkeypatch.setattr(driver_module, "firefox_available", lambda: False)
     monkeypatch.setattr(
-        driver_module, "_provision_firefox", lambda: "/cache/firefox/bin"
+        driver_module, "_provision_firefox", lambda *_args: "/cache/firefox/bin"
     )
 
     with pytest.raises(_AbortFirefox):
@@ -95,7 +95,7 @@ def test_absent_and_download_fails_raises_actionable_error(
 ) -> None:
     monkeypatch.setattr(driver_module, "firefox_available", lambda: False)
 
-    def fail() -> str:
+    def fail(*_args) -> str:
         raise driver_module._FirefoxProvisionError(
             "Firefox is not installed and could not be downloaded "
             "(offline or blocked). Install Firefox manually, or run "

@@ -92,4 +92,9 @@ implies conformance.
 
 ## TODO
 
-- Nothing outstanding.
+- Native-speaker review of the Dutch translations by someone who knows
+  Dutch accessibility terminology: the manual checklist
+  (`i18n/nl/checklist.py`), the finding messages (`i18n/nl/checks.py`),
+  the report labels (`i18n/nl/report.py`) and axe-core's messages
+  (`wcag/locales/axe-nl.json`). Criterion titles are official (W3C) and
+  need no review.

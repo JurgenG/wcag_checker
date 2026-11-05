@@ -48,6 +48,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..i18n import SOURCE_LANG, tr
 from .core import Finding
 
 #: WCAG 2.2 minimum target size in CSS pixels (2.5.8).
@@ -150,7 +151,9 @@ return out;
 """
 
 
-def check_focus_visible(driver: Any, url: str | None = None) -> list[Finding]:
+def check_focus_visible(
+    driver: Any, url: str | None = None, *, lang: str = SOURCE_LANG
+) -> list[Finding]:
     """Flag focusable elements with no focus indicator or obscured focus.
 
     Supports **2.4.7 Focus Visible** and **2.4.11 Focus Not Obscured
@@ -161,10 +164,12 @@ def check_focus_visible(driver: Any, url: str | None = None) -> list[Finding]:
     """
     page_url = url if url is not None else driver.current_url
     records = driver.execute_script(_FOCUS_VISIBLE_JS)
-    return evaluate_focus_visible(records, page_url)
+    return evaluate_focus_visible(records, page_url, lang=lang)
 
 
-def evaluate_focus_visible(records: list[dict[str, Any]], url: str) -> list[Finding]:
+def evaluate_focus_visible(
+    records: list[dict[str, Any]], url: str, *, lang: str = SOURCE_LANG
+) -> list[Finding]:
     """Turn focus-probe records into 2.4.7 / 2.4.11 findings (pure).
 
     A record has ``gotFocus``, ``stylesBefore``/``stylesAfter`` (computed
@@ -185,10 +190,11 @@ def evaluate_focus_visible(records: list[dict[str, Any]], url: str) -> list[Find
                 Finding(
                     criterion="2.4.7",
                     severity="needs-review",
-                    message=(
+                    message=tr(
+                        lang,
                         "No computed-style change detected when this element "
                         "received keyboard focus — it may lack a visible focus "
-                        "indicator. Confirm a focus indicator is perceivable."
+                        "indicator. Confirm a focus indicator is perceivable.",
                     ),
                     selector=selector,
                     url=url,
@@ -199,10 +205,11 @@ def evaluate_focus_visible(records: list[dict[str, Any]], url: str) -> list[Find
                 Finding(
                     criterion="2.4.11",
                     severity="needs-review",
-                    message=(
+                    message=tr(
+                        lang,
                         "The focused element is covered by other content at its "
                         "centre point — focus may be hidden (e.g. behind a sticky "
-                        "header). Confirm the focused element stays visible."
+                        "header). Confirm the focused element stays visible.",
                     ),
                     selector=selector,
                     url=url,
@@ -229,7 +236,9 @@ return out;
 """
 
 
-def check_target_size(driver: Any, url: str | None = None) -> list[Finding]:
+def check_target_size(
+    driver: Any, url: str | None = None, *, lang: str = SOURCE_LANG
+) -> list[Finding]:
     """Flag interactive targets smaller than the 24×24 CSS-px minimum.
 
     Supports **2.5.8 Target Size (Minimum)**. Measures each visible
@@ -242,10 +251,12 @@ def check_target_size(driver: Any, url: str | None = None) -> list[Finding]:
     """
     page_url = url if url is not None else driver.current_url
     records = driver.execute_script(_TARGET_SIZE_JS)
-    return evaluate_target_size(records, page_url)
+    return evaluate_target_size(records, page_url, lang=lang)
 
 
-def evaluate_target_size(records: list[dict[str, Any]], url: str) -> list[Finding]:
+def evaluate_target_size(
+    records: list[dict[str, Any]], url: str, *, lang: str = SOURCE_LANG
+) -> list[Finding]:
     """Turn target measurements into 2.5.8 findings (pure).
 
     A record has ``width``/``height`` (CSS px) and ``inline``. A rendered
@@ -265,10 +276,14 @@ def evaluate_target_size(records: list[dict[str, Any]], url: str) -> list[Findin
                 Finding(
                     criterion="2.5.8",
                     severity="needs-review",
-                    message=(
-                        f"Target renders at {round(width)}×{round(height)} CSS px, "
-                        f"below the {MIN_TARGET_PX}×{MIN_TARGET_PX} minimum. Confirm "
-                        "no spacing, inline, or equivalent-control exception applies."
+                    message=tr(
+                        lang,
+                        "Target renders at {width}×{height} CSS px, below the "
+                        "{minimum}×{minimum} minimum. Confirm no spacing, inline, "
+                        "or equivalent-control exception applies.",
+                        width=round(width),
+                        height=round(height),
+                        minimum=MIN_TARGET_PX,
                     ),
                     selector=record.get("selector"),
                     url=url,
@@ -289,7 +304,9 @@ return out;
 """
 
 
-def check_tab_order(driver: Any, url: str | None = None) -> list[Finding]:
+def check_tab_order(
+    driver: Any, url: str | None = None, *, lang: str = SOURCE_LANG
+) -> list[Finding]:
     """Flag positive ``tabindex`` values that override natural focus order.
 
     Supports **2.4.3 Focus Order**. A positive ``tabindex`` forces an
@@ -299,10 +316,12 @@ def check_tab_order(driver: Any, url: str | None = None) -> list[Finding]:
     """
     page_url = url if url is not None else driver.current_url
     records = driver.execute_script(_TAB_ORDER_JS)
-    return evaluate_tab_order(records, page_url)
+    return evaluate_tab_order(records, page_url, lang=lang)
 
 
-def evaluate_tab_order(records: list[dict[str, Any]], url: str) -> list[Finding]:
+def evaluate_tab_order(
+    records: list[dict[str, Any]], url: str, *, lang: str = SOURCE_LANG
+) -> list[Finding]:
     """Turn tabindex records into 2.4.3 findings (pure).
 
     Each record has a ``tabindex`` (int, or ``None`` when the attribute is
@@ -318,10 +337,12 @@ def evaluate_tab_order(records: list[dict[str, Any]], url: str) -> list[Finding]
                 Finding(
                     criterion="2.4.3",
                     severity="needs-review",
-                    message=(
-                        f"Positive tabindex ({tabindex}) forces this element ahead "
+                    message=tr(
+                        lang,
+                        "Positive tabindex ({tabindex}) forces this element ahead "
                         "of the document order. Confirm the resulting focus order is "
-                        "still meaningful; prefer tabindex 0 and DOM order."
+                        "still meaningful; prefer tabindex 0 and DOM order.",
+                        tabindex=tabindex,
                     ),
                     selector=record.get("selector"),
                     url=url,
@@ -341,7 +362,9 @@ return cssPath(el);
 """
 
 
-def check_no_keyboard_trap(driver: Any, url: str | None = None) -> list[Finding]:
+def check_no_keyboard_trap(
+    driver: Any, url: str | None = None, *, lang: str = SOURCE_LANG
+) -> list[Finding]:
     """Detect focus that will not advance past an element via the keyboard.
 
     Supports **2.1.2 No Keyboard Trap**. Presses Tab repeatedly and
@@ -366,11 +389,11 @@ def check_no_keyboard_trap(driver: Any, url: str | None = None) -> list[Finding]
     for _ in range(presses):
         ActionChains(driver).send_keys(Keys.TAB).perform()
         sequence.append(driver.execute_script(_ACTIVE_SELECTOR_JS))
-    return evaluate_no_keyboard_trap(sequence, page_url)
+    return evaluate_no_keyboard_trap(sequence, page_url, lang=lang)
 
 
 def evaluate_no_keyboard_trap(
-    sequence: list[str | None], url: str
+    sequence: list[str | None], url: str, *, lang: str = SOURCE_LANG
 ) -> list[Finding]:
     """Turn an observed tab-focus sequence into 2.1.2 findings (pure).
 
@@ -400,11 +423,13 @@ def evaluate_no_keyboard_trap(
                 Finding(
                     criterion="2.1.2",
                     severity="needs-review",
-                    message=(
-                        "Keyboard focus stayed on this element for "
-                        f"{_STUCK_REPEAT}+ consecutive Tab presses — focus may be "
-                        "trapped. Confirm focus can move away using the keyboard "
-                        "alone (Tab or documented keys)."
+                    message=tr(
+                        lang,
+                        "Keyboard focus stayed on this element for {presses}+ "
+                        "consecutive Tab presses — focus may be trapped. Confirm "
+                        "focus can move away using the keyboard alone (Tab or "
+                        "documented keys).",
+                        presses=_STUCK_REPEAT,
                     ),
                     selector=run_value,
                     url=url,
@@ -416,19 +441,21 @@ def evaluate_no_keyboard_trap(
 # --- Aggregate -------------------------------------------------------------
 
 
-def run_all(driver: Any, url: str | None = None) -> list[Finding]:
+def run_all(
+    driver: Any, url: str | None = None, *, lang: str = SOURCE_LANG
+) -> list[Finding]:
     """Run every keyboard/focus check and return the combined findings.
 
-    Convenience for the session layer. Order: focus visibility/obscuring,
+    Convenience for the session layer; messages are in ``lang``. Order: focus visibility/obscuring,
     target size, focus order, keyboard trap (the trap check moves focus,
     so it runs last).
     """
     page_url = url if url is not None else driver.current_url
     findings: list[Finding] = []
-    findings += check_focus_visible(driver, page_url)
-    findings += check_target_size(driver, page_url)
-    findings += check_tab_order(driver, page_url)
-    findings += check_no_keyboard_trap(driver, page_url)
+    findings += check_focus_visible(driver, page_url, lang=lang)
+    findings += check_target_size(driver, page_url, lang=lang)
+    findings += check_tab_order(driver, page_url, lang=lang)
+    findings += check_no_keyboard_trap(driver, page_url, lang=lang)
     return findings
 
 

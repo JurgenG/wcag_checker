@@ -29,6 +29,12 @@ criterion + a registry-derived :class:`CoverageSummary`); the four
 ``render_*`` functions turn that same document into JSON (the canonical
 ``results.json``), plain text, Markdown, and a self-contained HTML page.
 
+Language: :func:`build_report` takes a ``lang`` that the document
+carries; every renderer writes its labels, the criterion names and the
+embedded sections in that language (see :mod:`leak_inspector.i18n`).
+Machine-readable values in the JSON (ids, severities, tiers, statuses)
+stay language-independent.
+
 Honesty (see :mod:`.core`): the report never asserts that a criterion
 passed. It shows the automated findings, states how much of WCAG 2.2 AA
 is even automatable, and repeats — in every format — that a clean
@@ -45,6 +51,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
+from ..i18n import N_, SOURCE_LANG, criterion_name, tr
 from . import manual_checklist, text_view
 from .core import CRITERIA_REGISTRY, Finding, WcagCriterion, criterion
 from .text_view import PageTextView
@@ -65,13 +72,13 @@ RunStatus = Literal["findings", "clean-auto", "manual"]
 #: Human labels for :data:`RunStatus` in the coverage table's "This run"
 #: column (the finding count is substituted for ``"findings"``).
 RUN_STATUS_LABELS: dict[str, str] = {
-    "clean-auto": "no automated finding",
-    "manual": "needs manual review",
+    "clean-auto": N_("no automated finding"),
+    "manual": N_("needs manual review"),
 }
 
 #: Legend shown under the coverage table so its columns are unambiguous —
 #: chiefly that neither "no automated finding" nor a missing row is a pass.
-COVERAGE_LEGEND = (
+COVERAGE_LEGEND = N_(
     "Coverage is how much of a criterion automated tooling can decide: "
     "'full' (a clean automated check is meaningful evidence), 'partial' "
     "(tooling flags candidates, a human confirms), 'manual' (no automated "
@@ -93,13 +100,28 @@ _SEVERITY_ORDER = {"error": 0, "warning": 1, "needs-review": 2}
 #: criteria *within* a priority band, never to set the band itself.
 _IMPACT_ORDER = {"critical": 0, "serious": 1, "moderate": 2, "minor": 3}
 
+#: Display labels for the language-independent values shown in reports.
+_SEVERITY_LABELS = {
+    "error": N_("error"),
+    "warning": N_("warning"),
+    "needs-review": N_("needs-review"),
+}
+_TIER_LABELS = {"full": N_("full"), "partial": N_("partial"), "manual": N_("manual")}
+_STATUS_LABELS = {"fail": N_("FAIL"), "needs-review": N_("NEEDS REVIEW")}
+_IMPACT_LABELS = {
+    "critical": N_("critical"),
+    "serious": N_("serious"),
+    "moderate": N_("moderate"),
+    "minor": N_("minor"),
+}
+
 
 @dataclass(frozen=True)
 class Priority:
     """A remediation-priority band for a criterion's findings.
 
-    ``key`` is the short id (``"P1"`` … ``"P4"``), ``label`` the human
-    name, ``rank`` the sort order (1 = most urgent), and ``jira`` the
+    ``key`` is the short id (``"P1"`` … ``"P4"``), ``label`` the English
+    human name (translated when rendered), ``rank`` the sort order (1 = most urgent), and ``jira`` the
     matching JIRA priority name. A band is a *fix-order* hint derived from
     finding severity and WCAG level — never a conformance/pass-fail claim.
     """
@@ -114,10 +136,10 @@ class Priority:
 #: the most fundamental barriers, and A is a prerequisite for AA. P2: a
 #: confirmed failure at AA. P3: a lower-impact definite failure (warning).
 #: P4: only unconfirmed needs-review candidates (need human triage first).
-P1 = Priority("P1", "Critical", 1, "Highest")
-P2 = Priority("P2", "High", 2, "High")
-P3 = Priority("P3", "Medium", 3, "Medium")
-P4 = Priority("P4", "Review", 4, "Low")
+P1 = Priority("P1", N_("Critical"), 1, "Highest")
+P2 = Priority("P2", N_("High"), 2, "High")
+P3 = Priority("P3", N_("Medium"), 3, "Medium")
+P4 = Priority("P4", N_("Review"), 4, "Low")
 PRIORITY_BANDS: tuple[Priority, ...] = (P1, P2, P3, P4)
 
 
@@ -138,7 +160,7 @@ def _impact_rank(findings: Sequence[Finding]) -> int:
 
 #: Stated in every rendered format so a clean run is never mistaken for
 #: a conformance claim.
-DISCLAIMER = (
+DISCLAIMER = N_(
     "A clean automated run does not imply WCAG 2.2 AA conformance. "
     "Automated tooling decides only part of a subset of the success "
     "criteria; a criterion with no automated finding is not a pass, and "
@@ -216,7 +238,8 @@ class ReportDocument:
     :mod:`.text_view`), rendered into every format as a *Reading view*
     manual-review section; empty when none were captured. ``coverage`` has
     one :class:`CoverageRow` per in-scope A+AA criterion (with or without
-    findings), driving the report's explicit *Coverage* table.
+    findings), driving the report's explicit *Coverage* table. ``lang`` is
+    the language the renderers write in.
     """
 
     summary: CoverageSummary
@@ -225,6 +248,7 @@ class ReportDocument:
     title: str | None = None
     text_views: tuple[PageTextView, ...] = ()
     coverage: tuple[CoverageRow, ...] = ()
+    lang: str = SOURCE_LANG
 
 
 def build_report(
@@ -234,6 +258,7 @@ def build_report(
     generated_at: str | None = None,
     title: str | None = None,
     text_views: Sequence[PageTextView] = (),
+    lang: str = SOURCE_LANG,
 ) -> ReportDocument:
     """Fold a flat finding list into a grouped, summarized report.
 
@@ -244,7 +269,8 @@ def build_report(
     still recorded; when omitted it is inferred from the findings.
     ``generated_at`` is passed straight through to the renderers.
     ``text_views`` are the per-page reading views embedded as the report's
-    *Reading view* section.
+    *Reading view* section. ``lang`` is the language the document renders
+    in.
     """
     grouped: dict[str, list[Finding]] = {}
     for finding in findings:
@@ -277,6 +303,7 @@ def build_report(
         title=title,
         text_views=tuple(text_views),
         coverage=_build_coverage(criteria),
+        lang=lang,
     )
 
 
@@ -378,17 +405,51 @@ def _criterion_priority_key(report: "CriterionReport") -> tuple:
 # --- Renderers -------------------------------------------------------------
 
 
+def _name(lang: str, crit: WcagCriterion) -> str:
+    """The criterion's official title in ``lang``."""
+    return criterion_name(lang, crit.id, crit.name)
+
+
+def _sev(lang: str, severity: str) -> str:
+    """Display label for a finding severity."""
+    return tr(lang, _SEVERITY_LABELS.get(severity, severity))
+
+
+def _tier(lang: str, tier: str) -> str:
+    """Display label for a coverage tier."""
+    return tr(lang, _TIER_LABELS.get(tier, tier))
+
+
+def _impact(lang: str, impact: str) -> str:
+    """Display label for an axe impact grade."""
+    return tr(lang, _IMPACT_LABELS.get(impact, impact))
+
+
+def _status(lang: str, status: str) -> str:
+    """Display label for a criterion status."""
+    return tr(lang, _STATUS_LABELS.get(status, status))
+
+
+def _page(lang: str) -> str:
+    """Placeholder shown for a finding that targets the whole page."""
+    return tr(lang, "(page)")
+
+
 def render_json(document: ReportDocument) -> str:
     """Render the canonical ``results.json`` string.
 
     Stable key order, UTF-8 preserved, two-space indent. This is the
     authoritative machine-readable output; the other formats are derived
-    views for humans.
+    views for humans. Names, labels, messages and the disclaimer are in
+    the document's language; ids, severities, tiers and statuses are not
+    translated.
     """
+    lang = document.lang
     payload = {
+        "lang": lang,
         "title": document.title,
         "generated_at": document.generated_at,
-        "disclaimer": DISCLAIMER,
+        "disclaimer": tr(lang, DISCLAIMER),
         "summary": {
             "urls": list(document.summary.urls),
             "total_in_scope": document.summary.total_in_scope,
@@ -400,12 +461,12 @@ def render_json(document: ReportDocument) -> str:
         "criteria": [
             {
                 "id": report.criterion.id,
-                "name": report.criterion.name,
+                "name": _name(lang, report.criterion),
                 "level": report.criterion.level,
                 "automatable": report.criterion.automatable,
                 "status": report.status,
                 "priority": report.priority.key,
-                "priority_label": report.priority.label,
+                "priority_label": tr(lang, report.priority.label),
                 "findings": [
                     {
                         "severity": f.severity,
@@ -423,7 +484,7 @@ def render_json(document: ReportDocument) -> str:
         "coverage": [
             {
                 "id": row.criterion.id,
-                "name": row.criterion.name,
+                "name": _name(lang, row.criterion),
                 "level": row.criterion.level,
                 "automatable": row.criterion.automatable,
                 "run_status": row.run_status,
@@ -436,74 +497,112 @@ def render_json(document: ReportDocument) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False)
 
 
-def _run_status_text(row: CoverageRow) -> str:
+def _run_status_text(row: CoverageRow, lang: str) -> str:
     """The 'This run' cell text for a coverage row."""
     if row.run_status == "findings":
-        return f"{row.finding_count} finding(s)"
-    return RUN_STATUS_LABELS[row.run_status]
+        return tr(lang, "{count} finding(s)", count=row.finding_count)
+    return tr(lang, RUN_STATUS_LABELS[row.run_status])
+
+
+def _priority_counts(lang: str, pri: dict[str, int], separator: str) -> str:
+    """'N critical / N high / N medium / N needs-review' for the summary."""
+    return separator.join(
+        (
+            tr(lang, "{count} critical", count=pri["P1"]),
+            tr(lang, "{count} high", count=pri["P2"]),
+            tr(lang, "{count} medium", count=pri["P3"]),
+            tr(lang, "{count} needs-review", count=pri["P4"]),
+        )
+    )
+
+
+def _severity_counts(lang: str, sev: dict[str, int], separator: str) -> str:
+    """'N error / N warning / N needs-review' for the summary."""
+    return separator.join(
+        (
+            tr(lang, "{count} error", count=sev["error"]),
+            tr(lang, "{count} warning", count=sev["warning"]),
+            tr(lang, "{count} needs-review", count=sev["needs-review"]),
+        )
+    )
 
 
 def render_text(document: ReportDocument) -> str:
     """Render a plain-text report for a terminal or a ``.txt`` sidecar."""
+    lang = document.lang
     summary = document.summary
-    lines = ["WCAG 2.2 AA audit", "=================", ""]
+    title = tr(lang, "WCAG 2.2 AA audit")
+    lines = [title, "=" * len(title), ""]
     if document.title:
-        lines.append(f"Site: {document.title}")
+        lines.append(tr(lang, "Site: {title}", title=document.title))
     if document.generated_at:
-        lines.append(f"Generated: {document.generated_at}")
-    lines.append(f"Pages audited ({len(summary.urls)}):")
+        lines.append(tr(lang, "Generated: {when}", when=document.generated_at))
+    lines.append(tr(lang, "Pages audited ({count}):", count=len(summary.urls)))
     lines.extend(f"  - {url}" for url in summary.urls)
     lines.append("")
 
-    lines += ["Coverage summary", "----------------"]
-    lines.append(f"WCAG 2.2 A + AA criteria in scope: {summary.total_in_scope}")
-    lines.append(f"  automatable (full):    {summary.by_tier['full']}")
-    lines.append(f"  automatable (partial): {summary.by_tier['partial']}")
-    lines.append(f"  manual only:           {summary.by_tier['manual']}")
-    lines.append(f"Criteria with findings: {summary.criteria_with_findings}")
-    pri = summary.by_priority
+    heading = tr(lang, "Coverage summary")
+    lines += [heading, "-" * len(heading)]
     lines.append(
-        f"By priority: {pri['P1']} critical, {pri['P2']} high, "
-        f"{pri['P3']} medium, {pri['P4']} needs-review"
+        tr(lang, "WCAG 2.2 A + AA criteria in scope: {count}", count=summary.total_in_scope)
     )
-    sev = summary.findings_by_severity
+    lines.append(tr(lang, "  automatable (full):    {count}", count=summary.by_tier["full"]))
     lines.append(
-        f"Findings: {sev['error']} error, {sev['warning']} warning, "
-        f"{sev['needs-review']} needs-review"
+        tr(lang, "  automatable (partial): {count}", count=summary.by_tier["partial"])
+    )
+    lines.append(tr(lang, "  manual only:           {count}", count=summary.by_tier["manual"]))
+    lines.append(
+        tr(lang, "Criteria with findings: {count}", count=summary.criteria_with_findings)
+    )
+    lines.append(
+        tr(lang, "By priority: {counts}", counts=_priority_counts(lang, summary.by_priority, ", "))
+    )
+    lines.append(
+        tr(
+            lang,
+            "Findings: {counts}",
+            counts=_severity_counts(lang, summary.findings_by_severity, ", "),
+        )
     )
     lines.append("")
-    lines.extend(textwrap.wrap(DISCLAIMER, width=76))
+    lines.extend(textwrap.wrap(tr(lang, DISCLAIMER), width=76))
     lines.append("")
 
-    lines += ["Coverage — all WCAG 2.2 A + AA criteria", "-" * 39]
-    lines.extend(textwrap.wrap(COVERAGE_LEGEND, width=76))
+    heading = tr(lang, "Coverage — all WCAG 2.2 A + AA criteria")
+    lines += [heading, "-" * len(heading)]
+    lines.extend(textwrap.wrap(tr(lang, COVERAGE_LEGEND), width=76))
     lines.append("")
     for row in document.coverage:
         crit = row.criterion
         lines.append(
-            f"  {crit.id:<7} {crit.level:<2} {crit.automatable:<7} "
-            f"{_run_status_text(row):<20} {crit.name}"
+            f"  {crit.id:<7} {crit.level:<2} {_tier(lang, crit.automatable):<12} "
+            f"{_run_status_text(row, lang):<24} {_name(lang, crit)}"
         )
     lines.append("")
 
-    lines += ["Findings by priority", "--------------------"]
+    heading = tr(lang, "Findings by priority")
+    lines += [heading, "-" * len(heading)]
     if not document.criteria:
-        lines.append("No automated findings.")
+        lines.append(tr(lang, "No automated findings."))
     for report in document.criteria:
         crit = report.criterion
         lines.append(
-            f"[{report.priority.key} {report.priority.label}]  {crit.id}  "
-            f"{crit.name}  [{crit.level} · {crit.automatable}]"
+            f"[{report.priority.key} {tr(lang, report.priority.label)}]  {crit.id}  "
+            f"{_name(lang, crit)}  [{crit.level} · {_tier(lang, crit.automatable)}]"
         )
         for finding in report.findings:
-            lines.append(f"  [{finding.severity}] {finding.selector or '(page)'}")
+            lines.append(
+                f"  [{_sev(lang, finding.severity)}] {finding.selector or _page(lang)}"
+            )
             lines.append(f"      {finding.message}")
             lines.append(f"      {finding.url}")
             if finding.screenshot:
-                lines.append(f"      evidence: {finding.screenshot}")
+                lines.append(
+                    "      " + tr(lang, "evidence: {path}", path=finding.screenshot)
+                )
         lines.append("")
 
-    reading = text_view.render_text_section(document.text_views)
+    reading = text_view.render_text_section(document.text_views, lang=lang)
     if reading:
         lines += ["", reading.rstrip()]
     lines += ["", _checklist(document, "text").rstrip()]
@@ -513,12 +612,12 @@ def render_text(document: ReportDocument) -> str:
 def _checklist(document: ReportDocument, fmt: str) -> str:
     """Render the embedded manual-review checklist section in ``fmt``.
 
-    Builds the checklist from the document's audited URLs + timestamp and
-    delegates to :mod:`.manual_checklist`; ``fmt`` is ``"text"``,
-    ``"markdown"`` or ``"html"``.
+    Builds the checklist from the document's audited URLs, timestamp and
+    language and delegates to :mod:`.manual_checklist`; ``fmt`` is
+    ``"text"``, ``"markdown"`` or ``"html"``.
     """
     checklist = manual_checklist.build_checklist(
-        document.summary.urls, generated_at=document.generated_at
+        document.summary.urls, generated_at=document.generated_at, lang=document.lang
     )
     if fmt == "markdown":
         return manual_checklist.render_markdown_section(checklist)
@@ -529,109 +628,119 @@ def _checklist(document: ReportDocument, fmt: str) -> str:
 
 def render_markdown(document: ReportDocument) -> str:
     """Render a Markdown report: a priority overview then band-grouped detail."""
+    lang = document.lang
     summary = document.summary
-    sev = summary.findings_by_severity
-    pri = summary.by_priority
     tier = summary.by_tier
-    lines = ["# WCAG 2.2 AA audit", ""]
+    lines = [f"# {tr(lang, 'WCAG 2.2 AA audit')}", ""]
     if document.title:
         lines.append(f"**{document.title}**")
         lines.append("")
     if document.generated_at:
-        lines.append(f"_Generated: {document.generated_at}_")
+        lines.append(f"_{tr(lang, 'Generated: {when}', when=document.generated_at)}_")
         lines.append("")
-    lines.append(f"> {DISCLAIMER}")
+    lines.append(f"> {tr(lang, DISCLAIMER)}")
     lines.append("")
 
-    lines.append("## Summary")
+    lines.append(f"## {tr(lang, 'Summary')}")
     lines.append("")
-    lines.append(f"**Pages audited ({len(summary.urls)}):**")
+    lines.append(f"**{tr(lang, 'Pages audited ({count}):', count=len(summary.urls))}**")
     lines.extend(f"- {url}" for url in summary.urls)
     lines.append("")
-    lines.append("| Metric | Value |")
+    lines.append(f"| {tr(lang, 'Metric')} | {tr(lang, 'Value')} |")
     lines.append("| --- | --- |")
-    lines.append(f"| A + AA criteria in scope | {summary.total_in_scope} |")
+    lines.append(f"| {tr(lang, 'A + AA criteria in scope')} | {summary.total_in_scope} |")
     lines.append(
-        f"| Automatable (full / partial / manual) | "
+        f"| {tr(lang, 'Automatable (full / partial / manual)')} | "
         f"{tier['full']} / {tier['partial']} / {tier['manual']} |"
     )
-    lines.append(f"| Criteria with findings | {summary.criteria_with_findings} |")
     lines.append(
-        f"| Priority (P1 crit / P2 high / P3 med / P4 review) | "
-        f"{pri['P1']} / {pri['P2']} / {pri['P3']} / {pri['P4']} |"
+        f"| {tr(lang, 'Criteria with findings')} | {summary.criteria_with_findings} |"
     )
     lines.append(
-        f"| Findings | {sev['error']} error / {sev['warning']} warning / "
-        f"{sev['needs-review']} needs-review |"
+        f"| {tr(lang, 'Priority')} | "
+        f"{_priority_counts(lang, summary.by_priority, ' / ')} |"
+    )
+    lines.append(
+        f"| {tr(lang, 'Findings')} | "
+        f"{_severity_counts(lang, summary.findings_by_severity, ' / ')} |"
     )
     lines.append("")
 
-    lines.append("## Coverage — all WCAG 2.2 A + AA criteria")
+    lines.append(f"## {tr(lang, 'Coverage — all WCAG 2.2 A + AA criteria')}")
     lines.append("")
-    lines.append(f"> {COVERAGE_LEGEND}")
+    lines.append(f"> {tr(lang, COVERAGE_LEGEND)}")
     lines.append("")
-    lines.append("| Criterion | Level | Coverage | This run |")
+    lines.append(
+        f"| {tr(lang, 'Criterion')} | {tr(lang, 'Level')} | "
+        f"{tr(lang, 'Coverage')} | {tr(lang, 'This run')} |"
+    )
     lines.append("| --- | --- | --- | --- |")
     for row in document.coverage:
         crit = row.criterion
         lines.append(
-            f"| {crit.id} {crit.name} | {crit.level} | {crit.automatable} "
-            f"| {_run_status_text(row)} |"
+            f"| {crit.id} {_name(lang, crit)} | {crit.level} | "
+            f"{_tier(lang, crit.automatable)} | {_run_status_text(row, lang)} |"
         )
     lines.append("")
 
-    lines.append("## Priority overview")
+    lines.append(f"## {tr(lang, 'Priority overview')}")
     lines.append("")
     if not document.criteria:
-        lines.append("No automated findings.")
+        lines.append(tr(lang, "No automated findings."))
         lines.append("")
     else:
-        lines.append("| Priority | Criterion | Level | Occurrences | Worst |")
+        lines.append(
+            f"| {tr(lang, 'Priority')} | {tr(lang, 'Criterion')} | {tr(lang, 'Level')} "
+            f"| {tr(lang, 'Occurrences')} | {tr(lang, 'Worst')} |"
+        )
         lines.append("| --- | --- | --- | ---: | --- |")
         for report in document.criteria:
             crit = report.criterion
             lines.append(
-                f"| {report.priority.key} · {report.priority.label} "
-                f"| {crit.id} {crit.name} | {crit.level} "
-                f"| {len(report.findings)} | {report.findings[0].severity} |"
+                f"| {report.priority.key} · {tr(lang, report.priority.label)} "
+                f"| {crit.id} {_name(lang, crit)} | {crit.level} "
+                f"| {len(report.findings)} | {_sev(lang, report.findings[0].severity)} |"
             )
         lines.append("")
 
-    lines.append("## Findings")
+    lines.append(f"## {tr(lang, 'Findings')}")
     lines.append("")
     for band in PRIORITY_BANDS:
         band_reports = [r for r in document.criteria if r.priority.key == band.key]
         if not band_reports:
             continue
-        lines.append(f"### {band.key} · {band.label}")
+        lines.append(f"### {band.key} · {tr(lang, band.label)}")
         lines.append("")
         for report in band_reports:
             crit = report.criterion
             lines.append(
-                f"#### {crit.id} {crit.name} "
-                f"({crit.level} · {crit.automatable}) — {report.status.upper()}"
+                f"#### {crit.id} {_name(lang, crit)} "
+                f"({crit.level} · {_tier(lang, crit.automatable)}) — "
+                f"{_status(lang, report.status)}"
             )
             lines.append("")
             for finding in report.findings:
                 evidence = (
-                    f" [[evidence]]({finding.screenshot})" if finding.screenshot else ""
+                    f" [[{tr(lang, 'evidence')}]]({finding.screenshot})"
+                    if finding.screenshot
+                    else ""
                 )
-                impact = f" _{finding.impact}_" if finding.impact else ""
+                impact = f" _{_impact(lang, finding.impact)}_" if finding.impact else ""
                 lines.append(
-                    f"- **{finding.severity}**{impact} "
-                    f"`{finding.selector or '(page)'}` — "
+                    f"- **{_sev(lang, finding.severity)}**{impact} "
+                    f"`{finding.selector or _page(lang)}` — "
                     f"{finding.message} ({finding.url}){evidence}"
                 )
             lines.append("")
 
-    reading = text_view.render_markdown_section(document.text_views)
+    reading = text_view.render_markdown_section(document.text_views, lang=lang)
     if reading:
         lines += ["", reading.rstrip()]
     lines += ["", _checklist(document, "markdown").rstrip()]
     return "\n".join(lines).rstrip() + "\n"
 
 
-def _evidence_cell(screenshot: str | None) -> str:
+def _evidence_cell(screenshot: str | None, lang: str) -> str:
     """Render the Evidence table cell: a thumbnail linking to the PNG.
 
     The path is a report-relative reference to a local file (e.g.
@@ -641,24 +750,31 @@ def _evidence_cell(screenshot: str | None) -> str:
     if not screenshot:
         return "—"
     src = html.escape(screenshot, quote=True)
-    return f"<a href='{src}'><img class='evidence' src='{src}' alt='element screenshot'></a>"
+    alt = html.escape(tr(lang, "element screenshot"), quote=True)
+    return f"<a href='{src}'><img class='evidence' src='{src}' alt='{alt}'></a>"
 
 
-def _coverage_name_cell(row: CoverageRow) -> str:
+def _coverage_name_cell(row: CoverageRow, lang: str) -> str:
     """Criterion cell for the coverage table; links to its findings anchor."""
-    label = f"{html.escape(row.criterion.id)} {html.escape(row.criterion.name)}"
+    label = f"{html.escape(row.criterion.id)} {html.escape(_name(lang, row.criterion))}"
     if row.run_status == "findings":
         anchor = html.escape(row.criterion.id, quote=True)
         return f"<a href='#crit-{anchor}'>{label}</a>"
     return label
 
 
-def _pri_pill(priority: Priority) -> str:
+def _pri_pill(priority: Priority, lang: str) -> str:
     """A coloured priority pill, e.g. ``P1 Critical``."""
     return (
         f"<span class='pri {priority.key}'>"
-        f"{html.escape(priority.key)} {html.escape(priority.label)}</span>"
+        f"{html.escape(priority.key)} {html.escape(tr(lang, priority.label))}</span>"
     )
+
+
+def _th(lang: str, *labels: str) -> str:
+    """A table header row with translated, escaped labels."""
+    cells = "".join(f"<th>{html.escape(tr(lang, label))}</th>" for label in labels)
+    return f"<thead><tr>{cells}</tr></thead>"
 
 
 def render_html(document: ReportDocument) -> str:
@@ -667,20 +783,19 @@ def render_html(document: ReportDocument) -> str:
     Leads with a priority triage table, then the findings grouped by
     priority band (worst first). The only local references are the
     element-evidence PNGs under ``screenshots/`` (written beside the
-    report); the page carries no remote CSS, fonts, or scripts.
+    report); the page carries no remote CSS, fonts, or scripts. The page's
+    ``lang`` attribute is the document's language.
     """
+    lang = document.lang
     summary = document.summary
-    sev = summary.findings_by_severity
-    pri = summary.by_priority
+    esc = html.escape
 
-    url_items = "".join(f"<li>{html.escape(u)}</li>" for u in summary.urls)
+    url_items = "".join(f"<li>{esc(u)}</li>" for u in summary.urls)
     subtitle = (
-        f"<p class='subtitle'>{html.escape(document.title)}</p>"
-        if document.title
-        else ""
+        f"<p class='subtitle'>{esc(document.title)}</p>" if document.title else ""
     )
     generated = (
-        f"<p class='meta'>Generated: {html.escape(document.generated_at)}</p>"
+        f"<p class='meta'>{esc(tr(lang, 'Generated: {when}', when=document.generated_at))}</p>"
         if document.generated_at
         else ""
     )
@@ -688,97 +803,122 @@ def render_html(document: ReportDocument) -> str:
     if document.criteria:
         triage_rows = "".join(
             "<tr>"
-            f"<td>{_pri_pill(report.priority)}</td>"
-            f"<td><a href='#crit-{html.escape(report.criterion.id, quote=True)}'>"
-            f"{html.escape(report.criterion.id)} {html.escape(report.criterion.name)}</a></td>"
-            f"<td>{html.escape(report.criterion.level)}</td>"
+            f"<td>{_pri_pill(report.priority, lang)}</td>"
+            f"<td><a href='#crit-{esc(report.criterion.id, quote=True)}'>"
+            f"{esc(report.criterion.id)} {esc(_name(lang, report.criterion))}</a></td>"
+            f"<td>{esc(report.criterion.level)}</td>"
             f"<td class='num'>{len(report.findings)}</td>"
-            f"<td class='sev-{html.escape(report.findings[0].severity)}'>"
-            f"{html.escape(report.findings[0].severity)}</td></tr>"
+            f"<td class='sev-{esc(report.findings[0].severity)}'>"
+            f"{esc(_sev(lang, report.findings[0].severity))}</td></tr>"
             for report in document.criteria
         )
         triage = (
-            "<table class='triage'><thead><tr><th>Priority</th><th>Criterion</th>"
-            "<th>Level</th><th>Occurrences</th><th>Worst</th></tr></thead>"
-            f"<tbody>{triage_rows}</tbody></table>"
+            "<table class='triage'>"
+            + _th(
+                lang,
+                N_("Priority"),
+                N_("Criterion"),
+                N_("Level"),
+                N_("Occurrences"),
+                N_("Worst"),
+            )
+            + f"<tbody>{triage_rows}</tbody></table>"
         )
     else:
-        triage = "<p>No automated findings.</p>"
+        triage = f"<p>{esc(tr(lang, 'No automated findings.'))}</p>"
 
     sections: list[str] = []
     for band in PRIORITY_BANDS:
         band_reports = [r for r in document.criteria if r.priority.key == band.key]
         if not band_reports:
             continue
+        band_title = tr(lang, "{label} priority", label=tr(lang, band.label))
         sections.append(
-            f"<h2 class='band'>{_pri_pill(band)} {html.escape(band.label)} priority</h2>"
+            f"<h2 class='band'>{_pri_pill(band, lang)} {esc(band_title)}</h2>"
         )
         for report in band_reports:
             crit = report.criterion
             rows = "".join(
-                "<tr class='sev-{sev}'>"
+                "<tr class='sev-{sev_class}'>"
                 "<td>{sev}</td><td>{impact}</td><td><code>{sel}</code></td>"
                 "<td>{msg}</td><td>{url}</td><td>{evidence}</td></tr>".format(
-                    sev=html.escape(f.severity),
-                    impact=html.escape(f.impact or "—"),
-                    sel=html.escape(f.selector or "(page)"),
-                    msg=html.escape(f.message),
-                    url=html.escape(f.url),
-                    evidence=_evidence_cell(f.screenshot),
+                    sev_class=esc(f.severity),
+                    sev=esc(_sev(lang, f.severity)),
+                    impact=esc(_impact(lang, f.impact) if f.impact else "—"),
+                    sel=esc(f.selector or _page(lang)),
+                    msg=esc(f.message),
+                    url=esc(f.url),
+                    evidence=_evidence_cell(f.screenshot, lang),
                 )
                 for f in report.findings
             )
             sections.append(
-                f"<section id='crit-{html.escape(crit.id, quote=True)}'>"
-                f"<h3>{_pri_pill(report.priority)} {html.escape(crit.id)} "
-                f"{html.escape(crit.name)} "
-                f"<span class='tag'>{html.escape(crit.level)} · "
-                f"{html.escape(crit.automatable)}</span> "
+                f"<section id='crit-{esc(crit.id, quote=True)}'>"
+                f"<h3>{_pri_pill(report.priority, lang)} {esc(crit.id)} "
+                f"{esc(_name(lang, crit))} "
+                f"<span class='tag'>{esc(crit.level)} · "
+                f"{esc(_tier(lang, crit.automatable))}</span> "
                 f"<span class='status {report.status}'>"
-                f"{html.escape(report.status.upper())}</span></h3>"
-                "<table><thead><tr><th>Severity</th><th>Impact</th><th>Element</th>"
-                "<th>Message</th><th>URL</th><th>Evidence</th></tr></thead>"
-                f"<tbody>{rows}</tbody></table></section>"
+                f"{esc(_status(lang, report.status))}</span></h3>"
+                "<table>"
+                + _th(
+                    lang,
+                    N_("Severity"),
+                    N_("Impact"),
+                    N_("Element"),
+                    N_("Message"),
+                    N_("URL"),
+                    N_("Evidence"),
+                )
+                + f"<tbody>{rows}</tbody></table></section>"
             )
 
     coverage_rows = "".join(
         "<tr>"
-        f"<td>{_coverage_name_cell(row)}</td>"
-        f"<td>{html.escape(row.criterion.level)}</td>"
-        f"<td>{html.escape(row.criterion.automatable)}</td>"
-        f"<td class='run-{row.run_status}'>{html.escape(_run_status_text(row))}</td>"
+        f"<td>{_coverage_name_cell(row, lang)}</td>"
+        f"<td>{esc(row.criterion.level)}</td>"
+        f"<td>{esc(_tier(lang, row.criterion.automatable))}</td>"
+        f"<td class='run-{row.run_status}'>{esc(_run_status_text(row, lang))}</td>"
         "</tr>"
         for row in document.coverage
     )
     coverage = (
-        f"<p class='cov-legend'>{html.escape(COVERAGE_LEGEND)}</p>"
-        "<table class='coverage'><thead><tr><th>Criterion</th><th>Level</th>"
-        "<th>Coverage</th><th>This run</th></tr></thead>"
-        f"<tbody>{coverage_rows}</tbody></table>"
+        f"<p class='cov-legend'>{esc(tr(lang, COVERAGE_LEGEND))}</p>"
+        "<table class='coverage'>"
+        + _th(lang, N_("Criterion"), N_("Level"), N_("Coverage"), N_("This run"))
+        + f"<tbody>{coverage_rows}</tbody></table>"
     )
 
+    def t(text: str, **params: object) -> str:
+        return esc(tr(lang, text, **params))
+
     return _HTML_TEMPLATE.format(
+        lang=esc(lang, quote=True),
+        title=t("WCAG 2.2 AA audit"),
         subtitle=subtitle,
         generated=generated,
-        url_count=len(summary.urls),
+        disclaimer=t(DISCLAIMER),
+        h_summary=t("Summary"),
+        pages_audited=t("Pages audited ({count}):", count=len(summary.urls)),
         url_items=url_items,
+        h_in_scope=t("A + AA criteria in scope"),
         total_in_scope=summary.total_in_scope,
+        h_automatable=t("Automatable (full / partial / manual)"),
         full=summary.by_tier["full"],
         partial=summary.by_tier["partial"],
         manual=summary.by_tier["manual"],
+        h_with_findings=t("Criteria with findings"),
         with_findings=summary.criteria_with_findings,
-        p1=pri["P1"],
-        p2=pri["P2"],
-        p3=pri["P3"],
-        p4=pri["P4"],
-        errors=sev["error"],
-        warnings=sev["warning"],
-        review=sev["needs-review"],
-        disclaimer=html.escape(DISCLAIMER),
+        h_priority=t("Priority"),
+        priority_counts=esc(_priority_counts(lang, summary.by_priority, " / ")),
+        h_findings=t("Findings"),
+        severity_counts=esc(_severity_counts(lang, summary.findings_by_severity, " / ")),
+        h_coverage=t("Coverage — all WCAG 2.2 A + AA criteria"),
         coverage=coverage,
+        h_overview=t("Priority overview"),
         triage=triage,
         sections="".join(sections),
-        reading_view=text_view.render_html_section(document.text_views),
+        reading_view=text_view.render_html_section(document.text_views, lang=lang),
         checklist=_checklist(document, "html"),
     )
 
@@ -787,11 +927,11 @@ def render_html(document: ReportDocument) -> str:
 #: in the CSS are doubled so ``str.format`` leaves them untouched.
 _HTML_TEMPLATE = """\
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{lang}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>WCAG 2.2 AA audit</title>
+<title>{title}</title>
 <style>
 body {{ font-family: system-ui, sans-serif; margin: 2rem; color: #1a1a1a; }}
 h1 {{ margin-bottom: 0.25rem; }}
@@ -852,28 +992,26 @@ ul.mc-list li {{ padding: 0.1rem 0; }}
 </style>
 </head>
 <body>
-<h1>WCAG 2.2 AA audit</h1>
+<h1>{title}</h1>
 {subtitle}
 {generated}
 <p class="disclaimer">{disclaimer}</p>
-<h2>Summary</h2>
-<p>Pages audited ({url_count}):</p>
+<h2>{h_summary}</h2>
+<p>{pages_audited}</p>
 <ul>{url_items}</ul>
 <table class="summary">
-<tr><th>A + AA criteria in scope</th><td>{total_in_scope}</td></tr>
-<tr><th>Automatable (full / partial / manual)</th>
+<tr><th>{h_in_scope}</th><td>{total_in_scope}</td></tr>
+<tr><th>{h_automatable}</th>
   <td>{full} / {partial} / {manual}</td></tr>
-<tr><th>Criteria with findings</th><td>{with_findings}</td></tr>
-<tr><th>Priority</th><td>{p1} critical / {p2} high / {p3} medium /
-  {p4} needs-review</td></tr>
-<tr><th>Findings</th><td>{errors} error / {warnings} warning /
-  {review} needs-review</td></tr>
+<tr><th>{h_with_findings}</th><td>{with_findings}</td></tr>
+<tr><th>{h_priority}</th><td>{priority_counts}</td></tr>
+<tr><th>{h_findings}</th><td>{severity_counts}</td></tr>
 </table>
-<h2>Coverage — all WCAG 2.2 A + AA criteria</h2>
+<h2>{h_coverage}</h2>
 {coverage}
-<h2>Priority overview</h2>
+<h2>{h_overview}</h2>
 {triage}
-<h2>Findings</h2>
+<h2>{h_findings}</h2>
 {sections}
 {reading_view}
 {checklist}
@@ -888,13 +1026,17 @@ def render_jira_tickets(document: ReportDocument) -> dict[str, str]:
     Returns a mapping of relative filename (e.g.
     ``1.4.3-contrast-minimum.md``) to ticket body — one ticket per *type*
     of issue (WCAG criterion), each a self-contained work item with fields,
-    the affected elements, and acceptance criteria. Pure: no filesystem;
-    the caller writes the files (into a ``jira/`` subfolder).
+    the affected elements, and acceptance criteria, in the document's
+    language. Filenames use the English criterion name so they are stable
+    across languages. Pure: no filesystem; the caller writes the files
+    (into a ``jira/`` subfolder).
     """
     tickets: dict[str, str] = {}
     for report in document.criteria:
         name = f"{report.criterion.id}-{_jira_slug(report.criterion.name)}.md"
-        tickets[name] = _jira_ticket(report, generated_at=document.generated_at)
+        tickets[name] = _jira_ticket(
+            report, generated_at=document.generated_at, lang=document.lang
+        )
     return tickets
 
 
@@ -906,15 +1048,20 @@ def _jira_slug(name: str) -> str:
     return slug.strip("-") or "criterion"
 
 
-def _jira_ticket(report: CriterionReport, *, generated_at: str | None) -> str:
+def _jira_ticket(
+    report: CriterionReport, *, generated_at: str | None, lang: str
+) -> str:
     """Render one criterion's findings as a JIRA-style Markdown ticket.
 
     The title, ``Priority`` field, and labels carry the remediation band so
     the ticket slots into a backlog at the right rank. A ``needs-review``
     criterion is typed as a triage task (a candidate the tool cannot
     confirm), not a confirmed bug. Affected elements are grouped by page.
+    Labels and the JIRA priority name stay in English (they are JIRA
+    field values).
     """
     crit = report.criterion
+    name = _name(lang, crit)
     findings = report.findings
     priority = report.priority
     urls: list[str] = []
@@ -922,6 +1069,13 @@ def _jira_ticket(report: CriterionReport, *, generated_at: str | None) -> str:
         if finding.url and finding.url not in urls:
             urls.append(finding.url)
     triage = report.status == "needs-review"
+    params = {
+        "id": crit.id,
+        "name": name,
+        "level": crit.level,
+        "count": len(findings),
+        "pages": len(urls),
+    }
 
     labels = [
         "accessibility", "wcag", "wcag2.2", f"level-{crit.level}",
@@ -931,61 +1085,102 @@ def _jira_ticket(report: CriterionReport, *, generated_at: str | None) -> str:
         labels.append("needs-triage")
 
     lines = [
-        f"# [{priority.key}] WCAG {crit.id} {crit.name} — "
-        f"{len(findings)} occurrence(s)",
+        f"# [{priority.key}] WCAG {crit.id} {name} — "
+        + tr(lang, "{count} occurrence(s)", count=len(findings)),
         "",
     ]
-    lines += ["| Field | Value |", "| --- | --- |"]
-    lines.append(
-        f"| Type | {'Accessibility review (candidate)' if triage else 'Accessibility bug'} |"
+    lines += [f"| {tr(lang, 'Field')} | {tr(lang, 'Value')} |", "| --- | --- |"]
+    ticket_type = (
+        tr(lang, "Accessibility review (candidate)")
+        if triage
+        else tr(lang, "Accessibility bug")
     )
-    lines.append(f"| Priority | {priority.jira} ({priority.key} · {priority.label}) |")
-    lines.append(f"| WCAG 2.2 criterion | {crit.id} {crit.name} (level {crit.level}) |")
-    lines.append(f"| Automatability | {crit.automatable} |")
-    lines.append(f"| Occurrences | {len(findings)} on {len(urls)} page(s) |")
-    lines.append(f"| Labels | {', '.join(labels)} |")
-    lines += ["", "## Description", ""]
+    lines.append(f"| {tr(lang, 'Type')} | {ticket_type} |")
+    lines.append(
+        f"| {tr(lang, 'Priority')} | {priority.jira} "
+        f"({priority.key} · {tr(lang, priority.label)}) |"
+    )
+    lines.append(
+        f"| {tr(lang, 'WCAG 2.2 criterion')} | "
+        + tr(lang, "{id} {name} (level {level})", **params)
+        + " |"
+    )
+    lines.append(f"| {tr(lang, 'Automatability')} | {_tier(lang, crit.automatable)} |")
+    lines.append(
+        f"| {tr(lang, 'Occurrences')} | "
+        + tr(lang, "{count} on {pages} page(s)", **params)
+        + " |"
+    )
+    lines.append(f"| {tr(lang, 'Labels')} | {', '.join(labels)} |")
+    lines += ["", f"## {tr(lang, 'Description')}", ""]
     if triage:
         lines.append(
-            f"WCAG 2.2 **{crit.id} {crit.name}** (level {crit.level}) needs a "
-            f"human decision: the automated audit flagged {len(findings)} "
-            f"candidate(s) across {len(urls)} page(s) but cannot confirm this "
-            f"criterion on its own. Triage each, then fix or dismiss."
+            tr(
+                lang,
+                "WCAG 2.2 **{id} {name}** (level {level}) needs a human "
+                "decision: the automated audit flagged {count} candidate(s) "
+                "across {pages} page(s) but cannot confirm this criterion on "
+                "its own. Triage each, then fix or dismiss.",
+                **params,
+            )
         )
     else:
         lines.append(
-            f"WCAG 2.2 success criterion **{crit.id} {crit.name}** (level "
-            f"{crit.level}) is not satisfied. The automated audit flagged "
-            f"{len(findings)} occurrence(s) across {len(urls)} page(s)."
+            tr(
+                lang,
+                "WCAG 2.2 success criterion **{id} {name}** (level {level}) is "
+                "not satisfied. The automated audit flagged {count} "
+                "occurrence(s) across {pages} page(s).",
+                **params,
+            )
         )
-    lines += ["", "## Affected elements", ""]
+    lines += ["", f"## {tr(lang, 'Affected elements')}", ""]
     for url in urls:
         lines.append(f"### {url}")
         for finding in findings:
             if finding.url != url:
                 continue
             evidence = (
-                f" — [evidence]({finding.screenshot})" if finding.screenshot else ""
+                f" — [{tr(lang, 'evidence')}]({finding.screenshot})"
+                if finding.screenshot
+                else ""
             )
-            impact = f" _(impact: {finding.impact})_" if finding.impact else ""
+            impact = (
+                " _("
+                + tr(lang, "impact: {impact}", impact=_impact(lang, finding.impact))
+                + ")_"
+                if finding.impact
+                else ""
+            )
             lines.append(
-                f"- **{finding.severity}**{impact} "
-                f"`{finding.selector or '(page)'}` — {finding.message}{evidence}"
+                f"- **{_sev(lang, finding.severity)}**{impact} "
+                f"`{finding.selector or _page(lang)}` — {finding.message}{evidence}"
             )
         lines.append("")
-    lines += ["## Acceptance criteria", ""]
+    lines += [f"## {tr(lang, 'Acceptance criteria')}", ""]
     lines.append(
-        f"- [ ] Every element above satisfies WCAG 2.2 {crit.id} {crit.name}."
+        "- [ ] "
+        + tr(lang, "Every element above satisfies WCAG 2.2 {id} {name}.", **params)
     )
-    lines.append("- [ ] A re-run of the audit reports no findings for this criterion.")
+    lines.append(
+        "- [ ] " + tr(lang, "A re-run of the audit reports no findings for this criterion.")
+    )
     if triage or crit.automatable != "full":
         lines.append(
-            "- [ ] A person has confirmed this criterion — the tool flags "
-            "candidates here but cannot decide it on its own."
+            "- [ ] "
+            + tr(
+                lang,
+                "A person has confirmed this criterion — the tool flags "
+                "candidates here but cannot decide it on its own.",
+            )
         )
     lines.append("")
-    stamp = f" at {generated_at}" if generated_at else ""
-    lines.append(f"> Generated by wcag-checker{stamp}. {DISCLAIMER}")
+    footer = (
+        tr(lang, "Generated by wcag-checker at {when}.", when=generated_at)
+        if generated_at
+        else tr(lang, "Generated by wcag-checker.")
+    )
+    lines.append(f"> {footer} {tr(lang, DISCLAIMER)}")
     return "\n".join(lines).rstrip() + "\n"
 
 

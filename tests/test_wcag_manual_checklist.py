@@ -158,3 +158,25 @@ class TestSectionRenderers:
         assert "<details class='mc'>" in out
         assert "type='checkbox'" in out
         assert "&amp;" in out  # url query escaped
+
+
+class TestDutch:
+    def test_markdown_is_dutch(self) -> None:
+        checklist = build_checklist(["https://x/a"], generated_at="T", lang="nl")
+        out = render_markdown(checklist)
+        assert "# Checklist voor handmatige controle van WCAG 2.2 AA" in out
+        assert "Gegenereerd: T" in out
+        assert "Herschalen van tekst" in out  # official Dutch title of 1.4.4
+        assert "(Zo niet, markeer als n.v.t.)" in out
+
+    def test_questions_follow_lang(self) -> None:
+        en = questions_for("1.4.4")
+        nl = questions_for("1.4.4", "nl")
+        assert len(en) == len(nl) and en != nl
+
+    def test_json_names_and_note_are_dutch(self) -> None:
+        data = json.loads(render_json(build_checklist(["https://x/a"], lang="nl")))
+        assert data["lang"] == "nl"
+        names = {c["id"]: c["name"] for c in data["criteria"]}
+        assert names["2.4.7"] == "Focus zichtbaar"
+        assert data["note"].startswith("Over deze succescriteria")

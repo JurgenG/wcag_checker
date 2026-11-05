@@ -40,7 +40,9 @@ these live here rather than coming from axe.
 Design mirrors :mod:`.keyboard_nav`: impure gatherers (``check_*``, one
 ``execute_script`` each, read-only) and pure evaluators (``evaluate_*``)
 that the hermetic tests drive with canned data. Boundary: the checks take
-a live driver from the caller; they never launch or close it.
+a live driver from the caller; they never launch or close it. Every
+public function takes a keyword-only ``lang`` for its messages (see
+:mod:`leak_inspector.i18n`).
 """
 
 from __future__ import annotations
@@ -48,6 +50,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from ..i18n import SOURCE_LANG, tr
 from .core import Finding
 
 #: Normalised link phrases that do not describe a destination on their own.
@@ -131,7 +134,9 @@ def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", stripped)
 
 
-def check_link_purpose(driver: Any, url: str | None = None) -> list[Finding]:
+def check_link_purpose(
+    driver: Any, url: str | None = None, *, lang: str = SOURCE_LANG
+) -> list[Finding]:
     """Flag links whose accessible name is a generic filler phrase (2.4.4).
 
     ``driver`` is a live Selenium WebDriver; the caller owns its lifecycle.
@@ -140,10 +145,12 @@ def check_link_purpose(driver: Any, url: str | None = None) -> list[Finding]:
     """
     page_url = url if url is not None else driver.current_url
     records = driver.execute_script(_LINK_JS)
-    return evaluate_link_purpose(records, page_url)
+    return evaluate_link_purpose(records, page_url, lang=lang)
 
 
-def evaluate_link_purpose(records: list[dict[str, Any]], url: str) -> list[Finding]:
+def evaluate_link_purpose(
+    records: list[dict[str, Any]], url: str, *, lang: str = SOURCE_LANG
+) -> list[Finding]:
     """Turn link records into 2.4.4 findings (pure).
 
     Each record has ``name`` (accessible name) and ``selector``. A link
@@ -160,10 +167,12 @@ def evaluate_link_purpose(records: list[dict[str, Any]], url: str) -> list[Findi
             Finding(
                 criterion="2.4.4",
                 severity="needs-review",
-                message=(
-                    f"Link text {name!r} may not describe the link's purpose out "
+                message=tr(
+                    lang,
+                    "Link text {name} may not describe the link's purpose out "
                     "of context (WCAG 2.4.4). Confirm the destination is clear "
-                    "from the link text alone, or make the text more specific."
+                    "from the link text alone, or make the text more specific.",
+                    name=repr(name),
                 ),
                 selector=record.get("selector"),
                 url=url,
@@ -172,7 +181,9 @@ def evaluate_link_purpose(records: list[dict[str, Any]], url: str) -> list[Findi
     return findings
 
 
-def check_empty_headings(driver: Any, url: str | None = None) -> list[Finding]:
+def check_empty_headings(
+    driver: Any, url: str | None = None, *, lang: str = SOURCE_LANG
+) -> list[Finding]:
     """Flag headings that have no text content (2.4.6).
 
     ``driver`` is a live Selenium WebDriver; the caller owns its lifecycle.
@@ -181,10 +192,12 @@ def check_empty_headings(driver: Any, url: str | None = None) -> list[Finding]:
     """
     page_url = url if url is not None else driver.current_url
     records = driver.execute_script(_HEADING_JS)
-    return evaluate_empty_headings(records, page_url)
+    return evaluate_empty_headings(records, page_url, lang=lang)
 
 
-def evaluate_empty_headings(records: list[dict[str, Any]], url: str) -> list[Finding]:
+def evaluate_empty_headings(
+    records: list[dict[str, Any]], url: str, *, lang: str = SOURCE_LANG
+) -> list[Finding]:
     """Turn heading records into 2.4.6 findings (pure).
 
     Each record has ``empty`` (no accessible text — no child text, no
@@ -200,10 +213,11 @@ def evaluate_empty_headings(records: list[dict[str, Any]], url: str) -> list[Fin
             Finding(
                 criterion="2.4.6",
                 severity="needs-review",
-                message=(
+                message=tr(
+                    lang,
                     "This heading has no text content — a heading must describe "
                     "the section it introduces (WCAG 2.4.6). Give it descriptive "
-                    "text or remove it if it is not a real heading."
+                    "text or remove it if it is not a real heading.",
                 ),
                 selector=record.get("selector"),
                 url=url,
@@ -212,12 +226,14 @@ def evaluate_empty_headings(records: list[dict[str, Any]], url: str) -> list[Fin
     return findings
 
 
-def run_all(driver: Any, url: str | None = None) -> list[Finding]:
-    """Run every content heuristic and return the combined findings."""
+def run_all(
+    driver: Any, url: str | None = None, *, lang: str = SOURCE_LANG
+) -> list[Finding]:
+    """Run every content heuristic; messages in ``lang``."""
     page_url = url if url is not None else driver.current_url
     findings: list[Finding] = []
-    findings += check_link_purpose(driver, page_url)
-    findings += check_empty_headings(driver, page_url)
+    findings += check_link_purpose(driver, page_url, lang=lang)
+    findings += check_empty_headings(driver, page_url, lang=lang)
     return findings
 
 

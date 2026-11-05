@@ -135,3 +135,42 @@ class TestCheckMedia:
         driver = _FakeDriver([_iframe("https://www.youtube.com/embed/x")])
         out = check_media(driver, "https://x/a")
         assert [f.criterion for f in out] == ["1.2.2", "1.2.3"]
+
+class TestDutch:
+    """Messages render in Dutch with ``lang="nl"``; the finding is unchanged."""
+
+    def test_video_message_is_dutch_with_tracks(self) -> None:
+        record = {
+            "type": "media", "tag": "video", "selector": "video#v",
+            "tracks": [{"kind": "captions"}],
+        }
+        (finding,) = evaluate_media([record], "https://x/", lang="nl")
+        assert finding.message.startswith("Er staat een <video>-element op de pagina.")
+        assert "ondertitels voor doven en slechthorenden: ja" in finding.message
+        assert "beschrijvingen: nee" in finding.message
+        assert (finding.criterion, finding.severity, finding.selector) == (
+            "1.2.3", "needs-review", "video#v",
+        )
+
+    def test_youtube_embed_is_dutch_with_provider(self) -> None:
+        record = {
+            "type": "iframe", "selector": "iframe#yt",
+            "src": "https://www.youtube.com/embed/x", "title": "",
+        }
+        captions, description = evaluate_media([record], "https://x/", lang="nl")
+        assert "ingesloten YouTube-video" in captions.message
+        assert captions.criterion == "1.2.2"
+        assert "audiodescriptie" in description.message
+        assert description.selector == "iframe#yt"
+
+    def test_generic_iframe_is_dutch_with_host_and_title(self) -> None:
+        record = {
+            "type": "iframe", "selector": "iframe#m",
+            "src": "https://maps.example.org/embed", "title": "Kaart",
+        }
+        (finding,) = evaluate_media([record], "https://x/", lang="nl")
+        assert finding.message.startswith(
+            "Een ingesloten <iframe> (van maps.example.org, titel “Kaart”)"
+        )
+        assert "markeer het als n.v.t." in finding.message
+        assert finding.criterion == "1.2.1"

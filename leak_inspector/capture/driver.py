@@ -50,6 +50,8 @@ from selenium.webdriver import Firefox
 from selenium.webdriver.common.selenium_manager import SeleniumManager
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 
+from ..i18n import SOURCE_LANG, tr
+
 
 #: The single stealth pref required by PROJECT.md. Hides ``navigator.webdriver``
 #: so bot-detection JS sees the same value a hand-driven browser would.
@@ -123,14 +125,14 @@ def firefox_available() -> bool:
         return False
 
 
-def _provision_firefox() -> str:
+def _provision_firefox(lang: str = SOURCE_LANG) -> str:
     """Download a private Firefox via Selenium Manager; return its path.
 
     The browser lands in Selenium's default cache (``~/.cache/selenium``
     on Linux/macOS) — a user-space directory needing no admin rights, so
     a subsequent :func:`firefox_available` probe resolves the cached copy
     and the download runs only once. Raises :class:`_FirefoxProvisionError`
-    with operator guidance when the download can't complete.
+    with operator guidance (in ``lang``) when the download can't complete.
     """
     try:
         out = SeleniumManager().binary_paths(["--browser", "firefox"])
@@ -140,9 +142,13 @@ def _provision_firefox() -> str:
         return path
     except Exception as exc:
         raise _FirefoxProvisionError(
-            "Firefox is not installed and could not be downloaded "
-            f"({exc}). Install Firefox manually, or run on a machine "
-            "with network access for the one-time ~80 MB fetch."
+            tr(
+                lang,
+                "Firefox is not installed and could not be downloaded "
+                "({error}). Install Firefox manually, or run on a machine "
+                "with network access for the one-time ~80 MB fetch.",
+                error=exc,
+            )
         ) from exc
 
 
@@ -175,6 +181,7 @@ def launch_driver(
     *,
     headless: bool = False,
     width: int | None = None,
+    lang: str = SOURCE_LANG,
 ) -> LaunchedDriver:
     """Launch Firefox with BiDi enabled and capture-friendly prefs.
 
@@ -203,6 +210,8 @@ def launch_driver(
       * A positive pixel width — resize the window to that width (keeping
         the current height) right after launch, so the page is audited at
         a chosen viewport width for checking responsive/mobile layouts.
+
+    ``lang``: language of the operator messages printed to stderr.
     """
     profile_is_temporary = profile_path is None
     if profile_is_temporary:
@@ -224,15 +233,18 @@ def launch_driver(
     # auto-provisions via Selenium's own DriverFinder.
     if not firefox_available():
         print(
-            "Firefox not found — downloading a private copy for capture "
-            "(~80 MB, one-time). This may take a minute…",
+            tr(
+                lang,
+                "Firefox not found — downloading a private copy for capture "
+                "(~80 MB, one-time). This may take a minute…",
+            ),
             file=sys.stderr,
         )
-        options.binary_location = _provision_firefox()
+        options.binary_location = _provision_firefox(lang)
 
     driver = Firefox(options=options)
     if width is not None:
-        _set_window_width(driver, width)
+        _set_window_width(driver, width, lang)
 
     return LaunchedDriver(
         driver=driver,
@@ -241,7 +253,7 @@ def launch_driver(
     )
 
 
-def _set_window_width(driver: Any, width: int) -> None:
+def _set_window_width(driver: Any, width: int, lang: str = SOURCE_LANG) -> None:
     """Resize the driver's window to ``width`` px, keeping its height.
 
     Used for responsive-layout audits: the caller picks a viewport width
@@ -260,10 +272,15 @@ def _set_window_width(driver: Any, width: int) -> None:
     achieved = driver.get_window_size()["width"]
     if achieved != width:
         print(
-            f"Requested browser width {width}px but Firefox used {achieved}px "
-            "(it enforces a minimum window width). The page was audited at "
-            f"{achieved}px, not {width}px — narrower mobile layouts cannot be "
-            "reproduced this way.",
+            tr(
+                lang,
+                "Requested browser width {width}px but Firefox used "
+                "{achieved}px (it enforces a minimum window width). The page "
+                "was audited at {achieved}px, not {width}px — narrower mobile "
+                "layouts cannot be reproduced this way.",
+                width=width,
+                achieved=achieved,
+            ),
             file=sys.stderr,
         )
 

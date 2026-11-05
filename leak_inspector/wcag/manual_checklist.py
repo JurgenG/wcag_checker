@@ -37,6 +37,10 @@ them with the audited URLs; :func:`render_markdown` and
 criterion a heading with its questions as checkboxes, per page) and a
 machine-readable form. It is **not** a test runner — it emits review
 tasks, never pass/fail results.
+
+Language: :func:`build_checklist` takes a ``lang``; the renderers write
+the note, headings, criterion names and questions in it (see
+:mod:`leak_inspector.i18n`). :data:`QUESTIONS` holds the English source.
 """
 
 from __future__ import annotations
@@ -46,11 +50,12 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from ..i18n import N_, SOURCE_LANG, criterion_name, tr
 from .core import CRITERIA_REGISTRY, WcagCriterion
 
 #: Section title used when the checklist is embedded in an audit report,
 #: shared across the Markdown / text / HTML renderings.
-SECTION_HEADING = "Manual-review checklist"
+SECTION_HEADING = N_("Manual-review checklist")
 
 #: The conformance target: WCAG 2.2 levels A and AA (AAA is out of scope).
 _IN_SCOPE_LEVELS = frozenset({"A", "AA"})
@@ -60,8 +65,11 @@ _IN_SCOPE_LEVELS = frozenset({"A", "AA"})
 #: their automatable substance).
 _REVIEW_TIERS = frozenset({"manual", "partial"})
 
+#: Display labels for the coverage tiers.
+_TIER_LABELS = {"manual": N_("manual"), "partial": N_("partial")}
+
 #: Explains the checklist's standing, carried into every rendered format.
-NOTE = (
+NOTE = N_(
     "These success criteria cannot be decided automatically. Confirm each "
     "one by hand on every page below. 'manual' criteria need human "
     "judgement outright. Many criteria (both 'manual' and 'partial') also "
@@ -278,22 +286,26 @@ class ManualChecklist:
     confirmed against. ``generated_at`` is an optional caller-supplied
     timestamp (this module never reads the clock, to stay deterministic).
     The criteria×routes matrix is left implicit here and expanded by the
-    renderers, so the data model stays free of duplication.
+    renderers, so the data model stays free of duplication. ``lang`` is
+    the language the renderers write in.
     """
 
     criteria: tuple[WcagCriterion, ...]
     urls: tuple[str, ...]
     generated_at: str | None
+    lang: str = SOURCE_LANG
 
 
 def build_checklist(
     urls: Sequence[str],
     *,
     generated_at: str | None = None,
+    lang: str = SOURCE_LANG,
 ) -> ManualChecklist:
     """Select the review criteria and pair them with the audited routes.
 
-    ``urls`` is the set of pages audited (deduplicated and sorted).
+    ``urls`` is the set of pages audited (deduplicated and sorted);
+    ``lang`` is the language the checklist renders in.
     Returns a :class:`ManualChecklist` holding every in-scope
     ``manual``/``partial`` criterion in WCAG numbering order.
     """
@@ -306,17 +318,25 @@ def build_checklist(
         criteria=criteria,
         urls=tuple(sorted(set(urls))),
         generated_at=generated_at,
+        lang=lang,
     )
 
 
-def questions_for(criterion_id: str) -> tuple[str, ...]:
-    """Return the review questions for a criterion, or an empty tuple.
+def questions_for(criterion_id: str, lang: str = SOURCE_LANG) -> tuple[str, ...]:
+    """Return the review questions for a criterion in ``lang``, or ``()``.
 
     An empty tuple means no questions are authored for that id — which the
     completeness test forbids for any in-scope criterion, so in practice
     every criterion the checklist carries has at least one question.
     """
-    return QUESTIONS.get(criterion_id, ())
+    return tuple(tr(lang, q) for q in QUESTIONS.get(criterion_id, ()))
+
+
+def _heading(crit: WcagCriterion, lang: str) -> str:
+    """'<id> <name> (<level> · <tier>)' for a criterion, in ``lang``."""
+    name = criterion_name(lang, crit.id, crit.name)
+    tier = tr(lang, _TIER_LABELS.get(crit.automatable, crit.automatable))
+    return f"{crit.id} {name} ({crit.level} · {tier})"
 
 
 def _tier_counts(criteria: Sequence[WcagCriterion]) -> tuple[int, int]:
@@ -333,35 +353,39 @@ def render_markdown(checklist: ManualChecklist) -> str:
     questions as unchecked task-list items, so a reviewer works through
     the questions page by page.
     """
+    lang = checklist.lang
     manual, partial = _tier_counts(checklist.criteria)
 
-    lines = ["# WCAG 2.2 AA manual-review checklist", ""]
+    lines = [f"# {tr(lang, 'WCAG 2.2 AA manual-review checklist')}", ""]
     if checklist.generated_at:
-        lines.append(f"_Generated: {checklist.generated_at}_")
+        lines.append(f"_{tr(lang, 'Generated: {when}', when=checklist.generated_at)}_")
         lines.append("")
-    lines.append(NOTE)
+    lines.append(tr(lang, NOTE))
     lines.append("")
     lines.append(
-        f"{len(checklist.criteria)} criteria to review "
-        f"({manual} manual, {partial} partial) "
-        f"across {len(checklist.urls)} page(s). Work through the questions "
-        f"under each criterion for every page."
+        tr(
+            lang,
+            "{count} criteria to review ({manual} manual, {partial} partial) "
+            "across {pages} page(s). Work through the questions under each "
+            "criterion for every page.",
+            count=len(checklist.criteria),
+            manual=manual,
+            partial=partial,
+            pages=len(checklist.urls),
+        )
     )
     lines.append("")
 
     if not checklist.urls:
-        lines.append("_No pages were recorded to review._")
+        lines.append(f"_{tr(lang, 'No pages were recorded to review.')}_")
         return "\n".join(lines).rstrip() + "\n"
 
     for url in checklist.urls:
         lines.append(f"## {url}")
         lines.append("")
         for criterion in checklist.criteria:
-            lines.append(
-                f"### {criterion.id} {criterion.name} "
-                f"({criterion.level} · {criterion.automatable})"
-            )
-            lines.extend(f"- [ ] {q}" for q in questions_for(criterion.id))
+            lines.append(f"### {_heading(criterion, lang)}")
+            lines.extend(f"- [ ] {q}" for q in questions_for(criterion.id, lang))
             lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
@@ -369,10 +393,14 @@ def render_markdown(checklist: ManualChecklist) -> str:
 def _intro_line(checklist: ManualChecklist) -> str:
     """One-line tally of how many criteria across how many pages remain."""
     manual, partial = _tier_counts(checklist.criteria)
-    return (
-        f"{len(checklist.criteria)} criteria still need a human "
-        f"({manual} manual, {partial} partial) across "
-        f"{len(checklist.urls)} page(s)."
+    return tr(
+        checklist.lang,
+        "{count} criteria still need a human ({manual} manual, {partial} "
+        "partial) across {pages} page(s).",
+        count=len(checklist.criteria),
+        manual=manual,
+        partial=partial,
+        pages=len(checklist.urls),
     )
 
 
@@ -383,33 +411,41 @@ def render_markdown_section(checklist: ManualChecklist) -> str:
     down (so it nests under a report's ``#`` title) and without the
     standalone document title, for embedding in an audit report. Pure.
     """
-    lines = [f"## {SECTION_HEADING}", "", NOTE, "", _intro_line(checklist), ""]
+    lang = checklist.lang
+    lines = [
+        f"## {tr(lang, SECTION_HEADING)}",
+        "",
+        tr(lang, NOTE),
+        "",
+        _intro_line(checklist),
+        "",
+    ]
     if not checklist.urls:
-        lines.append("_No pages were recorded to review._")
+        lines.append(f"_{tr(lang, 'No pages were recorded to review.')}_")
         return "\n".join(lines).rstrip() + "\n"
     for url in checklist.urls:
         lines.append(f"### {url}")
         lines.append("")
         for crit in checklist.criteria:
-            lines.append(
-                f"#### {crit.id} {crit.name} ({crit.level} · {crit.automatable})"
-            )
-            lines.extend(f"- [ ] {q}" for q in questions_for(crit.id))
+            lines.append(f"#### {_heading(crit, lang)}")
+            lines.extend(f"- [ ] {q}" for q in questions_for(crit.id, lang))
             lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
 
 def render_text_section(checklist: ManualChecklist) -> str:
     """Render the checklist as a plain-text report section. Pure."""
-    lines = [SECTION_HEADING, "-" * len(SECTION_HEADING), "", _intro_line(checklist), ""]
+    lang = checklist.lang
+    heading = tr(lang, SECTION_HEADING)
+    lines = [heading, "-" * len(heading), "", _intro_line(checklist), ""]
     if not checklist.urls:
-        lines.append("(no pages were recorded to review)")
+        lines.append(f"({tr(lang, 'No pages were recorded to review.')})")
         return "\n".join(lines).rstrip() + "\n"
     for url in checklist.urls:
         lines.append(url)
         for crit in checklist.criteria:
-            lines.append(f"  {crit.id} {crit.name} ({crit.level} · {crit.automatable})")
-            lines.extend(f"    [ ] {q}" for q in questions_for(crit.id))
+            lines.append(f"  {_heading(crit, lang)}")
+            lines.extend(f"    [ ] {q}" for q in questions_for(crit.id, lang))
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
@@ -421,32 +457,37 @@ def render_html_section(checklist: ManualChecklist) -> str:
     tickable checkboxes, so the (long) checklist never dominates the report
     until expanded. Every value is HTML-escaped. Pure.
     """
+    lang = checklist.lang
     parts = [
-        f"<h2>{html.escape(SECTION_HEADING)}</h2>",
-        f"<p class='mc-note'>{html.escape(NOTE)}</p>",
+        f"<h2>{html.escape(tr(lang, SECTION_HEADING))}</h2>",
+        f"<p class='mc-note'>{html.escape(tr(lang, NOTE))}</p>",
         f"<p>{html.escape(_intro_line(checklist))}</p>",
     ]
     if not checklist.urls:
-        parts.append("<p><em>No pages were recorded to review.</em></p>")
+        empty = tr(lang, "No pages were recorded to review.")
+        parts.append(f"<p><em>{html.escape(empty)}</em></p>")
         return "".join(parts)
+    criteria_count = tr(lang, "{count} criteria", count=len(checklist.criteria))
     for url in checklist.urls:
         rows: list[str] = []
         for crit in checklist.criteria:
             items = "".join(
                 "<li><label><input type='checkbox'> "
                 f"{html.escape(q)}</label></li>"
-                for q in questions_for(crit.id)
+                for q in questions_for(crit.id, lang)
             )
+            name = criterion_name(lang, crit.id, crit.name)
+            tier = tr(lang, _TIER_LABELS.get(crit.automatable, crit.automatable))
             rows.append(
                 f"<div class='mc-crit'><strong>{html.escape(crit.id)} "
-                f"{html.escape(crit.name)}</strong> "
+                f"{html.escape(name)}</strong> "
                 f"<span class='tag'>{html.escape(crit.level)} · "
-                f"{html.escape(crit.automatable)}</span>"
+                f"{html.escape(tier)}</span>"
                 f"<ul class='mc-list'>{items}</ul></div>"
             )
         parts.append(
             f"<details class='mc'><summary>{html.escape(url)} — "
-            f"{len(checklist.criteria)} criteria</summary>{''.join(rows)}</details>"
+            f"{html.escape(criteria_count)}</summary>{''.join(rows)}</details>"
         )
     return "".join(parts)
 
@@ -457,17 +498,19 @@ def render_json(checklist: ManualChecklist) -> str:
     Stable key order, two-space indent. Stores the criteria and routes
     once each; the review matrix is their product.
     """
+    lang = checklist.lang
     payload = {
+        "lang": lang,
         "generated_at": checklist.generated_at,
-        "note": NOTE,
+        "note": tr(lang, NOTE),
         "urls": list(checklist.urls),
         "criteria": [
             {
                 "id": c.id,
-                "name": c.name,
+                "name": criterion_name(lang, c.id, c.name),
                 "level": c.level,
                 "tier": c.automatable,
-                "questions": list(questions_for(c.id)),
+                "questions": list(questions_for(c.id, lang)),
             }
             for c in checklist.criteria
         ],

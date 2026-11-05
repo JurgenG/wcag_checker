@@ -53,6 +53,7 @@ from selenium.common.exceptions import WebDriverException
 
 from .capture.driver import launch_driver
 from .capture.hotkey import DEFAULT_HOTKEY, HotkeyWatcher
+from .i18n import SOURCE_LANG
 from .wcag import (
     axe_runner,
     content,
@@ -167,7 +168,11 @@ class SessionResult:
 
 
 def audit_page(
-    driver: Any, url: str, screenshot_dir: Path | str | None = None
+    driver: Any,
+    url: str,
+    screenshot_dir: Path | str | None = None,
+    *,
+    lang: str = SOURCE_LANG,
 ) -> list[Finding]:
     """Run both audit engines against the driver's current page.
 
@@ -176,19 +181,20 @@ def audit_page(
     (:mod:`.wcag.pointers`), the descriptive-text heuristics
     (:mod:`.wcag.content`), the keyboard/focus checks
     (:mod:`.wcag.keyboard_nav`), and the reflow check (:mod:`.wcag.reflow`)
-    into one finding list, all labelled with ``url``. When
+    into one finding list, all labelled with ``url`` and worded in
+    ``lang``. When
     ``screenshot_dir`` is given, captures an element-level PNG for each
     finding into it (:mod:`.wcag.screenshot`) while the page is still
     rendered. Impure: drives the live browser and, with ``screenshot_dir``,
     writes PNGs. The reflow check runs last because it momentarily resizes
     the viewport (and restores it), so it must not perturb the others.
     """
-    findings = list(axe_runner.audit(driver, url))
-    findings += media.check_media(driver, url)
-    findings += pointers.check_pointers(driver, url)
-    findings += content.run_all(driver, url)
-    findings += keyboard_nav.run_all(driver, url)
-    findings += reflow.check_reflow(driver, url)
+    findings = list(axe_runner.audit(driver, url, lang=lang))
+    findings += media.check_media(driver, url, lang=lang)
+    findings += pointers.check_pointers(driver, url, lang=lang)
+    findings += content.run_all(driver, url, lang=lang)
+    findings += keyboard_nav.run_all(driver, url, lang=lang)
+    findings += reflow.check_reflow(driver, url, lang=lang)
     if screenshot_dir is not None:
         findings = screenshot.capture_findings(driver, findings, screenshot_dir)
     return findings
@@ -219,6 +225,7 @@ def run_session(
     on_audit: Callable[[str, int], None] | None = None,
     hotkey: str = DEFAULT_HOTKEY,
     formats: tuple[str, ...] = DEFAULT_FORMATS,
+    lang: str = SOURCE_LANG,
 ) -> SessionResult:
     """Drive a full interactive audit session and write the reports.
 
@@ -232,6 +239,7 @@ def run_session(
     ``headless`` runs without a visible window (a real desktop is still
     recommended for accurate focus behaviour). ``width``, if given, resizes
     the window to that pixel width for auditing a responsive/mobile layout.
+    ``lang`` is the language of the findings and reports.
 
     Reports are written into a per-domain subdirectory of ``output_dir``
     (named after the starting URL's host, e.g. ``reports/belibre.be/``) with
@@ -247,7 +255,7 @@ def run_session(
     seen_view_urls: set[str] = set()
 
     def _audit(d: Any, u: str) -> list[Finding]:
-        page_findings = audit_page(d, u, screenshot_dir)
+        page_findings = audit_page(d, u, screenshot_dir, lang=lang)
         if u and u not in seen_view_urls:
             seen_view_urls.add(u)
             view = capture_text_view(d, u)
@@ -255,7 +263,7 @@ def run_session(
                 text_views.append(view)
         return page_findings
 
-    with launch_driver(headless=headless, width=width) as launched:
+    with launch_driver(headless=headless, width=width, lang=lang) as launched:
         driver = launched.driver
         watcher = HotkeyWatcher(driver, hotkey=hotkey)
         driver.get(target_url)
@@ -276,6 +284,7 @@ def run_session(
         formats=formats,
         text_views=text_views,
         filename_prefix=_report_prefix(),
+        lang=lang,
     )
     return SessionResult(
         audited_urls=tuple(audited_urls),
@@ -292,6 +301,7 @@ def run_once(
     headless: bool = False,
     width: int | None = None,
     formats: tuple[str, ...] = DEFAULT_FORMATS,
+    lang: str = SOURCE_LANG,
 ) -> SessionResult:
     """Audit a single page non-interactively and write the reports.
 
@@ -304,6 +314,7 @@ def run_once(
     handles pages that redirect or vanish too fast to press the hotkey by
     hand. ``headless`` runs without a visible window; ``width``, if given,
     resizes the window to that pixel width for a responsive/mobile layout.
+    ``lang`` is the language of the findings and reports.
 
     ``SessionResult.audited_urls`` holds the single URL the page settled
     on; when that differs from ``target_url`` a redirect occurred.
@@ -316,11 +327,11 @@ def run_once(
     """
     site_dir = Path(output_dir) / domain_slug(target_url)
     screenshot_dir = site_dir / SCREENSHOT_DIRNAME
-    with launch_driver(headless=headless, width=width) as launched:
+    with launch_driver(headless=headless, width=width, lang=lang) as launched:
         driver = launched.driver
         driver.get(target_url)
         audited_url = wait_until_settled(driver)
-        findings = audit_page(driver, audited_url, screenshot_dir)
+        findings = audit_page(driver, audited_url, screenshot_dir, lang=lang)
         view = capture_text_view(driver, audited_url)
 
     generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -332,6 +343,7 @@ def run_once(
         formats=formats,
         text_views=[view] if view is not None else [],
         filename_prefix=_report_prefix(),
+        lang=lang,
     )
     return SessionResult(
         audited_urls=(audited_url,),
@@ -429,6 +441,7 @@ def write_reports(
     title: str | None = None,
     text_views: Sequence[PageTextView] = (),
     filename_prefix: str = "",
+    lang: str = SOURCE_LANG,
 ) -> dict[str, Path]:
     """Render and write the selected report ``formats`` to ``output_dir``.
 
@@ -446,7 +459,8 @@ def write_reports(
     checklist) — e.g. ``"202607300858_"`` — so successive runs into the same
     directory are kept side by side rather than overwriting each other;
     the default empty prefix keeps the plain names. Screenshot links are
-    unaffected: they are relative to the report's own directory. Creates
+    unaffected: they are relative to the report's own directory. ``lang``
+    is the language every report and the checklist are written in. Creates
     ``output_dir`` if needed and returns a name→path map. Pure output seam
     — no driver, no network.
     """
@@ -459,6 +473,7 @@ def write_reports(
         generated_at=generated_at,
         title=title,
         text_views=text_views,
+        lang=lang,
     )
     written: dict[str, Path] = {}
 
@@ -480,7 +495,9 @@ def write_reports(
             path.write_text(render(document), encoding="utf-8")
             written[out_name] = path
 
-    checklist = manual_checklist.build_checklist(urls, generated_at=generated_at)
+    checklist = manual_checklist.build_checklist(
+        urls, generated_at=generated_at, lang=lang
+    )
     checklist_name = f"{filename_prefix}manual-checklist.md"
     checklist_path = out / checklist_name
     checklist_path.write_text(

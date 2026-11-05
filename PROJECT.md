@@ -73,7 +73,9 @@ and `wcag-batch`.
   (A / AA / AAA) and coverage tier.
 - `axe_runner.py` — injects axe-core (bundled by `axe-selenium-python`),
   runs it with the `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa` and
-  `wcag22aa` tags plus the `label-content-name-mismatch` rule, and turns
+  `wcag22aa` tags plus the `label-content-name-mismatch` rule (after
+  loading axe-core's message translation from `locales/axe-<lang>.json`
+  for a language other than English), and turns
   violations and incomplete results into `Finding`s grouped by WCAG
   criterion.
 - `keyboard_nav.py` — focus visibility (2.4.7 / 2.4.11), keyboard traps
@@ -92,6 +94,16 @@ and `wcag-batch`.
   per audited page.
 - `reporter.py` — builds one report document and renders it as JSON,
   text, Markdown, HTML and JIRA tickets.
+
+**Languages** (`leak_inspector/i18n/`)
+
+- `__init__.py` — `tr(lang, text, **params)` translates an English source
+  string and fills its `{placeholders}`; `N_()` marks constants that are
+  translated later; `criterion_name()` returns the official criterion
+  title. `DEFAULT_LANG` is `nl`.
+- `nl/` — the Dutch catalog, one module per area (`report`, `checklist`,
+  `checks`, `cli`) plus `criteria` with the official titles from the W3C
+  Authorized Dutch Translation of WCAG 2.2.
 
 **Session and CLI** (`leak_inspector/`)
 
@@ -113,6 +125,23 @@ so the decision logic is unit-tested without a browser.
   browser's lifecycle.
 - `reporter` is pure: findings in, text out. The CLI writes the files.
 - `capture` does not import `wcag`; the session connects them.
+
+## Languages
+
+User-facing text is written in English in the code and passed through
+`tr()` with the operator's `--lang`. The language travels from the CLI
+through the session into every check, the report document and the
+manual checklist, so each finding message is worded in the chosen
+language when it is created and each renderer writes its labels in it.
+axe-core is configured with its own message translation before it runs.
+Machine-readable values in the JSON outputs (ids, severities, tiers,
+statuses) are the same in every language.
+
+`tests/test_i18n.py` scans the source for every string passed to `tr()`
+or marked with `N_()` and requires each catalog to translate exactly
+that set with the same placeholders. Adding a language means adding a
+catalog package next to `nl/`, an `axe-<lang>.json` locale, and the code
+to `LANGUAGES`.
 
 ## Coverage tiers
 

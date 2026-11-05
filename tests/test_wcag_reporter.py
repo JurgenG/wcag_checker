@@ -343,3 +343,41 @@ class TestEmbeddedChecklist:
 
     def test_text_embeds_checklist(self, findings: list[Finding]) -> None:
         assert "Manual-review checklist" in render_text(build_report(findings))
+
+
+class TestDutch:
+    """Reports render in the document's language; machine values do not."""
+
+    def _doc(self, findings):
+        return build_report(findings, urls=[URL], generated_at="T", lang="nl")
+
+    def test_html_is_dutch(self, findings) -> None:
+        out = render_html(self._doc(findings))
+        assert '<html lang="nl">' in out
+        assert "Contrast (minimum)" in out  # official Dutch WCAG title
+        assert "Prioriteitenoverzicht" in out
+        assert "Een geautomatiseerde run zonder bevindingen" in out
+        assert "Checklist voor handmatige controle" in out
+
+    def test_markdown_and_text_are_dutch(self, findings) -> None:
+        doc = self._doc(findings)
+        assert "## Samenvatting" in render_markdown(doc)
+        assert "Samenvatting van de dekking" in render_text(doc)
+
+    def test_json_keeps_machine_values(self, findings) -> None:
+        data = json.loads(render_json(self._doc(findings)))
+        assert data["lang"] == "nl"
+        severities = {f["severity"] for c in data["criteria"] for f in c["findings"]}
+        assert severities <= {"error", "warning", "needs-review"}
+        names = {c["id"]: c["name"] for c in data["coverage"]}
+        assert names["1.4.3"] == "Contrast (minimum)"
+
+    def test_jira_filenames_stay_english(self, findings) -> None:
+        tickets = render_jira_tickets(self._doc(findings))
+        assert any(name.endswith("contrast-minimum.md") for name in tickets)
+        assert all("## Betrokken elementen" in body for body in tickets.values())
+
+    def test_english_is_unchanged_by_default(self, findings) -> None:
+        doc = build_report(findings, urls=[URL], generated_at="T")
+        assert doc.lang == "en"
+        assert '<html lang="en">' in render_html(doc)

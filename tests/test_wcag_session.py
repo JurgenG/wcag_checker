@@ -174,12 +174,12 @@ class TestAuditPage:
         )
 
         base = _finding("1.4.3", "error", "https://x/a")
-        monkeypatch.setattr(axe_runner, "audit", lambda d, u: [base])
-        monkeypatch.setattr(keyboard_nav, "run_all", lambda d, u: [])
-        monkeypatch.setattr(media, "check_media", lambda d, u: [])
-        monkeypatch.setattr(pointers, "check_pointers", lambda d, u: [])
-        monkeypatch.setattr(content, "run_all", lambda d, u: [])
-        monkeypatch.setattr(reflow, "check_reflow", lambda d, u: [])
+        monkeypatch.setattr(axe_runner, "audit", lambda d, u, **kw: [base])
+        monkeypatch.setattr(keyboard_nav, "run_all", lambda d, u, **kw: [])
+        monkeypatch.setattr(media, "check_media", lambda d, u, **kw: [])
+        monkeypatch.setattr(pointers, "check_pointers", lambda d, u, **kw: [])
+        monkeypatch.setattr(content, "run_all", lambda d, u, **kw: [])
+        monkeypatch.setattr(reflow, "check_reflow", lambda d, u, **kw: [])
 
         calls: dict[str, object] = {}
 
@@ -199,12 +199,12 @@ class TestAuditPage:
             axe_runner, content, keyboard_nav, media, pointers, reflow, screenshot,
         )
 
-        monkeypatch.setattr(axe_runner, "audit", lambda d, u: [])
-        monkeypatch.setattr(keyboard_nav, "run_all", lambda d, u: [])
-        monkeypatch.setattr(media, "check_media", lambda d, u: [])
-        monkeypatch.setattr(pointers, "check_pointers", lambda d, u: [])
-        monkeypatch.setattr(content, "run_all", lambda d, u: [])
-        monkeypatch.setattr(reflow, "check_reflow", lambda d, u: [])
+        monkeypatch.setattr(axe_runner, "audit", lambda d, u, **kw: [])
+        monkeypatch.setattr(keyboard_nav, "run_all", lambda d, u, **kw: [])
+        monkeypatch.setattr(media, "check_media", lambda d, u, **kw: [])
+        monkeypatch.setattr(pointers, "check_pointers", lambda d, u, **kw: [])
+        monkeypatch.setattr(content, "run_all", lambda d, u, **kw: [])
+        monkeypatch.setattr(reflow, "check_reflow", lambda d, u, **kw: [])
 
         def fail(*args, **kwargs):  # pragma: no cover - must not be called
             raise AssertionError("capture_findings called without a screenshot dir")
@@ -337,6 +337,7 @@ class TestCli:
         assert args.hotkey == "f9"
         assert args.format == "html"
         assert args.width is None
+        assert args.lang == "nl"
 
     def test_main_invokes_session(self, monkeypatch, tmp_path) -> None:
         from pathlib import Path
@@ -348,11 +349,11 @@ class TestCli:
 
         def fake_run(
             url, out, *, headless, width=None, on_audit=None, hotkey=None,
-            formats=None,
+            formats=None, lang=None,
         ):
             calls.update(
                 url=url, out=out, headless=headless, width=width,
-                on_audit=on_audit, hotkey=hotkey, formats=formats,
+                on_audit=on_audit, hotkey=hotkey, formats=formats, lang=lang,
             )
             return SessionResult(
                 audited_urls=("https://x/a",),
@@ -371,6 +372,7 @@ class TestCli:
         assert callable(calls["on_audit"])  # CLI wires the per-audit feedback
         assert calls["hotkey"] == "f9"  # default passed through
         assert calls["formats"] == ("md", "json")  # parsed and passed through
+        assert calls["lang"] == "nl"  # Dutch by default
 
     def test_invalid_hotkey_is_rejected(self, monkeypatch) -> None:
         from leak_inspector import cli, session
@@ -402,9 +404,10 @@ class TestCli:
 
         calls: dict[str, object] = {}
 
-        def fake_once(url, out, *, headless, width=None, formats=None):
+        def fake_once(url, out, *, headless, width=None, formats=None, lang=None):
             calls.update(
-                url=url, out=out, headless=headless, width=width, formats=formats
+                url=url, out=out, headless=headless, width=width, formats=formats,
+                lang=lang,
             )
             return SessionResult(
                 audited_urls=("https://x/a",),
@@ -451,3 +454,55 @@ class TestCli:
 
         monkeypatch.setattr(session, "run_session", fail)
         assert cli.main(["https://x/a", "--width", "0"]) == 2
+
+
+class TestCliLanguage:
+    def test_lang_is_passed_to_the_session(self, monkeypatch, tmp_path) -> None:
+        from pathlib import Path
+
+        from leak_inspector import cli, session
+        from leak_inspector.session import SessionResult
+
+        calls: dict[str, object] = {}
+
+        def fake_once(url, out, **kw):
+            calls.update(kw)
+            return SessionResult(
+                audited_urls=(url,), findings=[], output_dir=Path(out), written={}
+            )
+
+        monkeypatch.setattr(session, "run_once", fake_once)
+        assert cli.main(["https://x/a", "--once", "--out", str(tmp_path), "--lang", "en"]) == 0
+        assert calls["lang"] == "en"
+
+    def test_unsupported_lang_is_rejected(self) -> None:
+        import pytest
+
+        from leak_inspector import cli
+
+        with pytest.raises(SystemExit):
+            cli.main(["https://x/a", "--lang", "xx"])
+
+    def test_help_and_messages_follow_lang(self, monkeypatch, tmp_path, capsys) -> None:
+        from pathlib import Path
+
+        from leak_inspector import cli, session
+        from leak_inspector.i18n import tr
+        from leak_inspector.session import SessionResult
+
+        def fake_once(url, out, **kw):
+            return SessionResult(
+                audited_urls=(url,), findings=[], output_dir=Path(out), written={}
+            )
+
+        monkeypatch.setattr(session, "run_once", fake_once)
+        cli.main(["https://x/a", "--once", "--out", str(tmp_path)])
+        out = capsys.readouterr().out
+        assert tr("nl", cli.REMINDER) in out
+        assert tr("nl", cli.REMINDER) != cli.REMINDER
+
+        help_nl = cli.build_parser("nl").format_help()
+        help_en = cli.build_parser("en").format_help()
+        assert help_nl != help_en
+        assert cli.chosen_lang(["https://x/a", "--lang", "en"]) == "en"
+        assert cli.chosen_lang(["https://x/a"]) == "nl"
