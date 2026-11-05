@@ -18,7 +18,5 @@
 """Selenium capture layer.
 
 Opens Firefox (:mod:`.driver`) and provides the polled audit hotkey
-(:mod:`.hotkey`). The session layer uses these to drive a live audit; the
-privacy tool's BiDi event/bundle recording was removed in the WCAG
-conversion.
+(:mod:`.hotkey`). The session layer uses these to drive a live audit.
 """

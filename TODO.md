@@ -1,30 +1,23 @@
 # TODO
 
-Task queue for `wcag-checker`, a WCAG 2.2 AA accessibility auditor forked
-from the `leak_inspector` privacy tool. A clean automated run never
-implies conformance.
+Task queue for `wcag-checker`, a WCAG 2.2 AA accessibility auditor. A
+clean automated run never implies conformance.
 
 ## Done
 
-### Foundations & conversion
+### Foundations
 
 - WCAG 2.2 criteria registry (`wcag/core.py`) — `WcagCriterion` +
-  `Finding` dataclasses, each criterion tagged with an automatability
-  tier (`full` / `partial` / `manual`). Driver-free single source of
-  truth for coverage claims.
-- Registry corrections for WCAG 2.2 fidelity — dropped 4.1.1, 2.4.7 → A,
-  4.1.3 → manual.
-- Removed the entire privacy pipeline (tracker `modules/`, `analysis/`,
-  `enrichment/`, `dns_posture/`, `http_posture/`, `cms/`, privacy
-  `report/`, top-level `cli.py`/`__main__.py`/`signals.py`/`impact.py`,
-  `cname_provider.py`, `bulk-tool/` scanner) and repointed stale
-  docstrings; kept `capture/`, `bundle/`, `events.py`, `safe_net.py` and
-  `bulk-tool/datasets/`.
-- Packaging pass (`pyproject.toml`) — distribution renamed to
-  `wcag-checker`, `requires-python >=3.12`, added `axe-selenium-python`,
-  dropped unused deps and the PDF/weasyprint group.
-- Documentation — `README.md`, `CLAUDE.md`, `INSTALL.md`, `PROJECT.md`,
-  `SBOM.md`, `docs/` rewritten for the new project.
+  `Finding` dataclasses, all 86 WCAG 2.2 success criteria with their
+  level and automatability tier (`full` / `partial` / `manual`).
+  Driver-free single source of truth for coverage claims.
+- Packaging (`pyproject.toml`) — distribution `wcag-checker`,
+  `requires-python >=3.12`, `selenium` + `axe-selenium-python`.
+- Documentation — `README.md`, `INSTALL.md` (Windows, macOS, Linux from
+  scratch), `PROJECT.md`, `SBOM.md`, `docs/`.
+- Languages (`i18n/`) — English and Dutch via `--lang` (default `nl`):
+  reports, checklist, terminal messages, official W3C Dutch criterion
+  titles and a Dutch axe-core locale; catalog completeness test.
 
 ### Automated checks
 

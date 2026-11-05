@@ -1,5 +1,5 @@
-# leak_inspector — record what data a website leaks during a real
-# human-driven browsing session.
+# wcag_checker — record a real human-driven browsing session and audit
+# the visited pages for WCAG 2.2 accessibility conformance.
 # Copyright (C) 2026 Jurgen Gaeremyn
 #
 # This program is free software: you can redistribute it and/or modify
@@ -17,20 +17,18 @@
 
 """Firefox driver setup with WebDriver BiDi enabled.
 
-Builds a Selenium :class:`Firefox` driver configured for capture:
+Builds a Selenium :class:`Firefox` driver configured for auditing:
 
 * WebDriver BiDi is enabled (``webSocketUrl`` capability).
-* ``dom.webdriver.enabled = false`` so trackers see a normal browser and
-  fire their regular code paths.
-* Firefox's own outbound chatter (telemetry, auto-update checks,
-  safe-browsing pings) is silenced so it does not appear in the capture.
+* ``dom.webdriver.enabled = false`` so the site serves the same page it
+  serves a hand-driven browser.
+* Firefox's own outbound traffic (telemetry, auto-update checks,
+  safe-browsing pings) is switched off.
 * Enhanced Tracking Protection is turned off (see ``EXPOSURE_PREFS``) so
-  the capture records what a site *tries* to store — including tracker
-  cookies the browser would otherwise reject — rather than only what
-  survives Firefox's defaults.
+  every third-party script and embed loads and the audited page is the
+  complete page, including embedded players and widgets.
 * Profile is either a freshly created temporary directory (default) or
-  an existing Firefox profile passed in via ``profile_path`` for
-  "what does this site leak about me when logged in" runs.
+  an existing Firefox profile passed in via ``profile_path``.
 
 The launched driver is wrapped in a :class:`LaunchedDriver` that owns
 the profile lifecycle and cleans up the temp directory on close.
@@ -53,20 +51,15 @@ from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from ..i18n import SOURCE_LANG, tr
 
 
-#: The single stealth pref required by PROJECT.md. Hides ``navigator.webdriver``
-#: so bot-detection JS sees the same value a hand-driven browser would.
+#: Hides ``navigator.webdriver`` so bot-detection JS sees the same value a
+#: hand-driven browser would.
 STEALTH_PREFS: dict[str, Any] = {
     "dom.webdriver.enabled": False,
 }
 
-#: Disable Firefox's Enhanced Tracking Protection so the capture records
-#: what a site *attempts* to store, not merely what survives the browser's
-#: defaults. With ETP on (Firefox's default), known third-party tracker
-#: cookies are rejected or partitioned, so a ``Set-Cookie`` from e.g.
-#: ``px.ads.linkedin.com`` never lands and the storage snapshot can't see
-#: it. Turning protection off — chiefly ``cookieBehavior = 0`` (accept all,
-#: unpartitioned) — exposes the full set-cookie intent. The trade-off: this
-#: is the "tracker intent" view, not the protected real-visitor view.
+#: Disable Firefox's Enhanced Tracking Protection so every script, cookie
+#: and embed the site uses loads, and the audit sees the complete page
+#: with all its third-party players, widgets and consent banners.
 EXPOSURE_PREFS: dict[str, Any] = {
     # Governing pref: the individual tracking-protection prefs below only
     # stick when the category is "custom". With Firefox's default
@@ -80,16 +73,16 @@ EXPOSURE_PREFS: dict[str, Any] = {
     "network.cookie.cookieBehavior": 0,
     # Cryptomining and fingerprinting lists stay on in Firefox's default
     # Standard mode and block the matching scripts from loading at all —
-    # so the tracker never executes and the capture can't see it. Off.
+    # so those scripts never run. Off.
     "privacy.trackingprotection.cryptomining.enabled": False,
     "privacy.trackingprotection.fingerprinting.enabled": False,
     # ``cookieBehavior = 0`` un-partitions cookies but not the rest of
     # browser state; this un-partitions cache / localStorage / IndexedDB
-    # so cross-site supercookie attempts become observable too.
+    # too.
     "privacy.partition.network_state": False,
 }
 
-#: Firefox-internal traffic we silence so it does not pollute the capture.
+#: Firefox-internal traffic that is switched off during an audit.
 #: Each pref disables a specific outbound chatter source.
 NOISE_PREFS: dict[str, Any] = {
     "toolkit.telemetry.enabled": False,
@@ -183,27 +176,23 @@ def launch_driver(
     width: int | None = None,
     lang: str = SOURCE_LANG,
 ) -> LaunchedDriver:
-    """Launch Firefox with BiDi enabled and capture-friendly prefs.
+    """Launch Firefox with BiDi enabled and audit-friendly prefs.
 
     ``profile_path``:
       * ``None`` (default) — create a fresh temporary profile directory
         that will be deleted when the returned :class:`LaunchedDriver`
-        is closed. Isolates the capture from the developer's history.
+        is closed. Isolates the audit from the operator's history.
       * Path to an existing Firefox profile — used **in place**. The
         browsing session will mutate it (cookies, history, etc.); copy
         the profile beforehand if that is not what you want. The path
         must point to an existing directory.
 
     ``headless``:
-      * ``False`` (default) — visible Firefox window. Required for the
-        project's primary use case of recording real human-driven
-        browsing sessions.
-      * ``True`` — Firefox runs without a visible window. Intended for
-        the bulk-tool's already-scripted scan mode so the operator
-        doesn't have to watch dozens of windows pop up. BiDi events,
-        stealth prefs, and ``get_screenshot_as_png`` all still work.
-        Some sites do fingerprint the headless profile differently —
-        if you're auditing real visitor exposure, use visible mode.
+      * ``False`` (default) — visible Firefox window, for interactive
+        audits and reliable keyboard and focus checks.
+      * ``True`` — Firefox runs without a visible window, for unattended
+        ``--once`` and ``wcag-batch`` runs. Screenshots and BiDi still
+        work; some sites serve a headless browser a different page.
 
     ``width``:
       * ``None`` (default) — keep Firefox's default window width.
