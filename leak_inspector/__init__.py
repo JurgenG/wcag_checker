@@ -1,5 +1,5 @@
-# leak_inspector — record what data a website leaks during a real
-# human-driven browsing session.
+# wcag_checker — record a real human-driven browsing session and audit
+# the visited pages for WCAG 2.2 accessibility conformance.
 # Copyright (C) 2026 Jurgen Gaeremyn
 #
 # This program is free software: you can redistribute it and/or modify
@@ -15,6 +15,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""leak_inspector: record and analyze browser-session data leaks to third parties."""
+"""wcag-checker: audit live web pages for WCAG 2.2 AA accessibility."""
 
 __version__ = "0.1.0"
