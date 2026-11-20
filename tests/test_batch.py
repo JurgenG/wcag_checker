@@ -106,6 +106,9 @@ class _FakeDriver:
     def get(self, url: str) -> None:
         self.last = url
 
+    def set_page_load_timeout(self, seconds: float) -> None:
+        self.page_load_timeout = seconds
+
     @property
     def window_handles(self) -> list[str]:
         if self.dead:
@@ -252,6 +255,18 @@ class TestRunBatch:
         assert [s.status for s in result.sites] == ["failed", "audited", "audited"]
         assert len(launches) == 2  # one relaunch after the crash
         assert all(launched.closed for launched in launches)
+
+    def test_page_load_timeout_is_capped(self, monkeypatch, tmp_path) -> None:
+        self._patch(monkeypatch)
+        drivers: list[_FakeDriver] = []
+
+        def launch(*, headless=False, width=None, lang=None):
+            drivers.append(_FakeDriver())
+            return _FakeLaunched(drivers[-1])
+
+        monkeypatch.setattr(batch, "launch_driver", launch)
+        run_batch(_urls("https://a.be"), tmp_path)
+        assert drivers[0].page_load_timeout == batch.PAGE_LOAD_TIMEOUT
 
     def test_summary_is_rewritten_after_each_site(self, monkeypatch, tmp_path) -> None:
         self._patch(monkeypatch)

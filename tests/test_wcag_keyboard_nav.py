@@ -51,6 +51,16 @@ _NO_RING = {**_RING, "outlineStyle": "none", "outlineWidth": "0px"}
 
 
 class TestFocusVisible:
+    def test_probe_finishes_focus_transitions_before_reading_styles(self) -> None:
+        # A transitioned focus style reads its start value right after
+        # focus(); the probe must jump it to its end state first, or an
+        # animated indicator is falsely reported as missing (verified live).
+        from leak_inspector.wcag.keyboard_nav import _FOCUS_VISIBLE_JS
+
+        finish = _FOCUS_VISIBLE_JS.index("a.finish()")
+        assert _FOCUS_VISIBLE_JS.index("el.focus(") < finish
+        assert finish < _FOCUS_VISIBLE_JS.index("const after=snap(el)")
+
     def test_good_focus_ring_appears(self) -> None:
         record = {
             "selector": "a.link",

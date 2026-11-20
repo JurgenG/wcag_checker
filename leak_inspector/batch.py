@@ -64,6 +64,12 @@ from .session import (
 from .wcag import reporter
 
 
+#: Seconds a site may take to load before it is recorded as failed. The
+#: WebDriver default (300 s) lets a few hanging sites stall a long list
+#: for hours.
+PAGE_LOAD_TIMEOUT = 30
+
+
 @dataclass(frozen=True)
 class SiteResult:
     """Outcome of auditing one URL in a batch.
@@ -234,9 +240,12 @@ def _audit_site(
     """Audit one site into ``site_dir``; never raises — failures are recorded.
 
     ``name`` (if given) titles the per-site report and labels the site in
-    the summary; ``url`` is what gets audited.
+    the summary; ``url`` is what gets audited. A page that does not load
+    within :data:`PAGE_LOAD_TIMEOUT` seconds is recorded as failed.
     """
     try:
+        # Set per site so a relaunched browser gets it too.
+        driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT)
         driver.get(url)
         audited_url = wait_until_settled(driver)
         findings = audit_page(
