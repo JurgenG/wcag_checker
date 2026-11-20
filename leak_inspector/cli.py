@@ -212,6 +212,9 @@ def _run_interactive(args: argparse.Namespace, formats: tuple[str, ...]) -> int:
         )
     )
 
+    def _started(url: str) -> None:
+        print("  " + tr(lang, "auditing {url}…", url=url))
+
     def _confirm(url: str, count: int) -> None:
         print("  " + tr(lang, "audited {url} — {count} finding(s)", url=url, count=count))
 
@@ -236,6 +239,7 @@ def _run_interactive(args: argparse.Namespace, formats: tuple[str, ...]) -> int:
         width=args.width,
         on_audit=_confirm,
         on_error=_failed,
+        on_start=_started,
         hotkey=args.hotkey,
         formats=formats,
         lang=lang,
