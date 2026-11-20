@@ -28,8 +28,9 @@ The reliably automatable signal is exactly that horizontal scroll: at a
 true 320px viewport via WebDriver BiDi
 (``browsing_context.set_viewport`` — which reaches 320px even though a
 Firefox *window* cannot go below ~500px), measures the overflow, and then
-**restores** the operator's original viewport so an interactive session
-continues undisturbed.
+**resets** the viewport (``viewport=None``) so it follows the window again
+and an interactive session continues undisturbed — including when the
+operator resizes the window afterwards.
 
 ``1.4.10`` is a ``partial`` criterion (see :mod:`.core`): a positive
 result is a strong candidate, but whether information or functionality is
@@ -84,8 +85,8 @@ def check_reflow(
     ``driver`` is a live Selenium WebDriver on the page to test; the caller
     owns its lifecycle. ``url`` labels the finding; when omitted it is read
     from ``driver.current_url``. Side effect: briefly sets the viewport to
-    ``width`` px (via BiDi) to measure, then restores the original
-    viewport. Returns a single ``needs-review`` finding when the page
+    ``width`` px (via BiDi) to measure, then resets the viewport
+    so it follows the window again. Returns a single ``needs-review`` finding when the page
     scrolls horizontally at that width, else an empty list — which also
     covers the case where BiDi viewport control is unavailable.
     """
@@ -105,9 +106,6 @@ def _measure_reflow(driver: Any, width: int) -> dict[str, int] | None:
     """
     try:
         context = driver.current_window_handle
-        before = driver.execute_script(
-            "return {w: window.innerWidth, h: window.innerHeight};"
-        )
         set_viewport = driver.browsing_context.set_viewport
     except Exception:
         return None
@@ -124,11 +122,10 @@ def _measure_reflow(driver: Any, width: int) -> dict[str, int] | None:
     except Exception:
         return None
     finally:
+        # ``None`` is sent as ``null``, which un-pins the viewport so it
+        # tracks the window again; an explicit size would stay pinned.
         with suppress(Exception):
-            set_viewport(
-                context=context,
-                viewport={"width": int(before["w"]), "height": int(before["h"])},
-            )
+            set_viewport(context=context, viewport=None)
 
 
 def evaluate_reflow(

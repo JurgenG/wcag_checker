@@ -32,6 +32,7 @@ messages and help (default :data:`~leak_inspector.i18n.DEFAULT_LANG`).
 from __future__ import annotations
 
 import argparse
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -214,12 +215,27 @@ def _run_interactive(args: argparse.Namespace, formats: tuple[str, ...]) -> int:
     def _confirm(url: str, count: int) -> None:
         print("  " + tr(lang, "audited {url} — {count} finding(s)", url=url, count=count))
 
+    def _failed(url: str, exc: Exception) -> None:
+        reason = str(exc).splitlines()[0] if str(exc).strip() else type(exc).__name__
+        print(
+            "  "
+            + tr(
+                lang,
+                "audit of {url} failed ({reason}); press {combo} to try again.",
+                url=url,
+                reason=reason,
+                combo=combo,
+            ),
+            file=sys.stderr,
+        )
+
     result = session.run_session(
         args.url,
         args.out,
         headless=args.headless,
         width=args.width,
         on_audit=_confirm,
+        on_error=_failed,
         hotkey=args.hotkey,
         formats=formats,
         lang=lang,

@@ -23,8 +23,8 @@ wcag-checker https://example.com
 ```
 
 1. Firefox opens on the URL. Browse the site normally.
-2. On a page you want checked, click once inside the page, then press `F9`. The terminal confirms each audit, e.g. `geauditeerd: https://example.com/ — 12 bevinding(en)`. Repeat on as many pages as you like.
-3. Close the Firefox window. The reports are written and the terminal lists the files.
+2. On a page you want checked, click once inside the page, then press `F9`. The terminal confirms each audit, e.g. `geauditeerd: https://example.com/ — 12 bevinding(en)`. Repeat on as many pages as you like. If an audit fails, the terminal says so; press `F9` again.
+3. Close the Firefox window (or press Ctrl+C in the terminal). The reports are written and the terminal lists the files.
 
 ### One page, automatically: `--once`
 

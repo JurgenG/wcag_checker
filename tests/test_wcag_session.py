@@ -165,6 +165,47 @@ class TestRunAuditLoop:
         )
         assert calls == [("https://x/a", 2)]
 
+    def test_failed_audit_is_reported_and_session_continues(self) -> None:
+        driver = _FakeDriver("https://x/a", open_ticks=4)
+        results = iter([RuntimeError("axe is not defined"), None])
+        errors: list[tuple[str, str]] = []
+
+        def audit_fn(_driver, url):
+            outcome = next(results, None)
+            if isinstance(outcome, Exception):
+                raise outcome
+            return [_finding("1.4.3", "error", url)]
+
+        findings, urls = _run_audit_loop(
+            driver,
+            poll_interval=0,
+            audit_fn=audit_fn,
+            poll_fn=_poll_sequence([1, 1]),
+            on_error=lambda url, exc: errors.append((url, str(exc))),
+        )
+        assert errors == [("https://x/a", "axe is not defined")]
+        assert [f.criterion for f in findings] == ["1.4.3"]
+        assert urls == ["https://x/a"]
+
+    def test_ctrl_c_keeps_earlier_findings(self) -> None:
+        driver = _FakeDriver("https://x/a", open_ticks=10)
+        polls = iter([1])
+
+        def poll() -> int:
+            n = next(polls, None)
+            if n is None:
+                raise KeyboardInterrupt
+            return n
+
+        findings, urls = _run_audit_loop(
+            driver,
+            poll_interval=0,
+            audit_fn=lambda _d, url: [_finding("1.4.3", "error", url)],
+            poll_fn=poll,
+        )
+        assert [f.criterion for f in findings] == ["1.4.3"]
+        assert urls == ["https://x/a"]
+
 
 class TestAuditPage:
     def test_captures_evidence_when_dir_given(self, monkeypatch) -> None:
@@ -348,12 +389,13 @@ class TestCli:
         calls: dict[str, object] = {}
 
         def fake_run(
-            url, out, *, headless, width=None, on_audit=None, hotkey=None,
-            formats=None, lang=None,
+            url, out, *, headless, width=None, on_audit=None, on_error=None,
+            hotkey=None, formats=None, lang=None,
         ):
             calls.update(
                 url=url, out=out, headless=headless, width=width,
-                on_audit=on_audit, hotkey=hotkey, formats=formats, lang=lang,
+                on_audit=on_audit, on_error=on_error, hotkey=hotkey,
+                formats=formats, lang=lang,
             )
             return SessionResult(
                 audited_urls=("https://x/a",),
@@ -370,6 +412,7 @@ class TestCli:
         assert calls["headless"] is True
         assert calls["width"] is None  # not given → default kept
         assert callable(calls["on_audit"])  # CLI wires the per-audit feedback
+        assert callable(calls["on_error"])  # ...and the failed-audit notice
         assert calls["hotkey"] == "f9"  # default passed through
         assert calls["formats"] == ("md", "json")  # parsed and passed through
         assert calls["lang"] == "nl"  # Dutch by default
