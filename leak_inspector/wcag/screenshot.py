@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import time
 from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
@@ -129,13 +130,15 @@ def capture_findings(
     returned unchanged. Side effects: reads and briefly mutates the live
     DOM (the overlay is removed after each shot) and writes PNG files
     (creating ``screenshot_dir`` on first capture). Input findings are not
-    mutated.
+    mutated. Each call writes new files (see :func:`_evidence_name`), so
+    a later audit never overwrites evidence an earlier report links to.
     """
     out = Path(screenshot_dir)
+    run = str(time.time_ns())
     shot: dict[tuple[str, str], str | None] = {}
     updated: list[Finding] = []
     for finding in findings:
-        name = _evidence_for(driver, finding, out, shot)
+        name = _evidence_for(driver, finding, out, shot, run)
         updated.append(replace(finding, screenshot=name) if name else finding)
     return updated
 
@@ -145,6 +148,7 @@ def _evidence_for(
     finding: Finding,
     out: Path,
     shot: dict[tuple[str, str], str | None],
+    run: str,
 ) -> str | None:
     """Return the evidence path for a finding, shooting once per element.
 
@@ -156,7 +160,7 @@ def _evidence_for(
         return None
     key = (finding.url, finding.selector)
     if key not in shot:
-        name = _evidence_name(finding.url, finding.selector)
+        name = _evidence_name(finding.url, finding.selector, run)
         ok = _capture_element(driver, finding.selector, out, name)
         shot[key] = f"{out.name}/{name}" if ok else None
     return shot[key]
@@ -241,14 +245,16 @@ def _capture_clip(driver: Any, clip: dict[str, float]) -> bytes:
     return base64.b64decode(data)
 
 
-def _evidence_name(url: str, selector: str) -> str:
-    """Return a stable, collision-resistant PNG filename for an element.
+def _evidence_name(url: str, selector: str, run: str) -> str:
+    """Return a collision-resistant PNG filename for an element.
 
-    Derived from the page URL and selector so the same element yields the
-    same name across a run (enabling dedup) and elements on different pages
-    never collide, without leaking a long selector into the filesystem.
+    Derived from the page URL, selector and ``run`` (a per-audit token):
+    elements on different pages never collide, and a re-audit of the same
+    page — later in the session, or in a later run into the same folder —
+    gets new files instead of overwriting the evidence an earlier report
+    links to. No long selector leaks into the filesystem.
     """
-    digest = hashlib.sha1(f"{url}\n{selector}".encode("utf-8")).hexdigest()
+    digest = hashlib.sha1(f"{run}\n{url}\n{selector}".encode("utf-8")).hexdigest()
     return f"{digest[:12]}.png"
 
 

@@ -189,6 +189,17 @@ def test_same_selector_on_different_urls_gets_distinct_files(tmp_path) -> None:
     assert result[0].screenshot != result[1].screenshot
 
 
+def test_reaudit_of_same_element_does_not_overwrite_earlier_evidence(tmp_path) -> None:
+    out = tmp_path / "screenshots"
+    driver = _FakeDriver({".btn"})
+
+    first = screenshot.capture_findings(driver, [_finding(".btn")], out)
+    second = screenshot.capture_findings(driver, [_finding(".btn")], out)
+
+    assert first[0].screenshot != second[0].screenshot
+    assert (tmp_path / first[0].screenshot).exists()
+
+
 def test_input_findings_are_not_mutated(tmp_path) -> None:
     out = tmp_path / "screenshots"
     driver = _FakeDriver({".btn"})

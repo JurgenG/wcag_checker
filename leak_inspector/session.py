@@ -27,9 +27,10 @@ checklist into a per-domain subdirectory of the output directory
 (``<out>/<host>/``), with a ``YYYYMMDDHHMM_`` timestamp on each filename so
 repeated audits of the same site do not overwrite one another.
 
-The hotkey is detected by polling: each loop tick runs one
-``execute_script`` (via :class:`~.capture.hotkey.HotkeyWatcher`) that both
-installs the in-page keydown listener and reads how many times it fired.
+The hotkey is detected by polling: each loop tick runs one script per
+open tab (via :class:`~.capture.hotkey.HotkeyWatcher`) that both installs
+the in-page keydown listener and reads how many times it fired; a press
+in another tab switches the driver to that tab before the audit.
 Everything — the poll, the audits, the window-close check — runs on the
 main thread, so there is no cross-thread state to guard.
 

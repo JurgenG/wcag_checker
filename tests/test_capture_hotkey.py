@@ -76,40 +76,91 @@ class TestPollScript:
             poll_script("ctrl+alt")
 
 
-class _FakeDriver:
-    """execute_script returns queued counts; ``raise_once`` simulates a glitch."""
+class _FakeScript:
+    """BiDi ``script`` module: per-tab queued counts; records each call."""
 
-    def __init__(self, counts, *, raise_once: bool = False) -> None:
-        self._counts = list(counts)
-        self._raise_once = raise_once
-        self.scripts: list[str] = []
+    def __init__(self, driver) -> None:
+        self._driver = driver
 
-    def execute_script(self, script: str):
-        self.scripts.append(script)
-        if self._raise_once:
-            self._raise_once = False
+    def execute(self, script: str, *, context_id: str):
+        d = self._driver
+        d.calls.append((context_id, script))
+        if context_id in d.raise_in:
+            d.raise_in.discard(context_id)
             raise WebDriverException("mid-navigation")
-        return self._counts.pop(0) if self._counts else 0
+        queue = d.counts.get(context_id, [])
+        value = queue.pop(0) if queue else 0
+        return {"type": "number", "value": value}
+
+
+class _SwitchTo:
+    def __init__(self, driver) -> None:
+        self._driver = driver
+
+    def window(self, handle: str) -> None:
+        self._driver.current = handle
+        self._driver.switched.append(handle)
+
+
+class _FakeDriver:
+    """Tabs keyed by handle, each with queued press counts."""
+
+    def __init__(self, counts, *, current="t1", raise_in=()) -> None:
+        self.counts = {h: list(c) for h, c in counts.items()}
+        self.current = current
+        self.raise_in = set(raise_in)
+        self.calls: list[tuple[str, str]] = []
+        self.switched: list[str] = []
+        self.script = _FakeScript(self)
+        self.switch_to = _SwitchTo(self)
+
+    @property
+    def window_handles(self) -> list[str]:
+        return list(self.counts)
+
+    @property
+    def current_window_handle(self) -> str:
+        if self.current not in self.counts:
+            raise WebDriverException("no such window")
+        return self.current
 
 
 class TestHotkeyWatcher:
     def test_poll_returns_the_count(self) -> None:
-        watcher = HotkeyWatcher(_FakeDriver([2]), hotkey="f9")
+        watcher = HotkeyWatcher(_FakeDriver({"t1": [2]}), hotkey="f9")
         assert watcher.poll() == 2
 
-    def test_poll_runs_the_built_script(self) -> None:
-        driver = _FakeDriver([0])
+    def test_poll_runs_the_built_script_in_every_tab(self) -> None:
+        driver = _FakeDriver({"t1": [0], "t2": [0]})
         HotkeyWatcher(driver, hotkey="ctrl+alt+shift+a").poll()
-        assert "e.code === 'KeyA'" in driver.scripts[0]
+        assert [ctx for ctx, _ in driver.calls] == ["t1", "t2"]
+        assert all("e.code === 'KeyA'" in script for _, script in driver.calls)
+
+    def test_press_in_other_tab_switches_driver_there(self) -> None:
+        driver = _FakeDriver({"t1": [0], "t2": [1]})
+        assert HotkeyWatcher(driver, hotkey="f9").poll() == 1
+        assert driver.switched == ["t2"]
+
+    def test_press_in_current_tab_does_not_switch(self) -> None:
+        driver = _FakeDriver({"t1": [1], "t2": [1]})
+        assert HotkeyWatcher(driver, hotkey="f9").poll() == 1
+        assert driver.switched == []
+
+    def test_press_after_current_tab_closed_switches_to_remaining_tab(self) -> None:
+        driver = _FakeDriver({"t2": [1]}, current="t1")  # t1 was closed
+        assert HotkeyWatcher(driver, hotkey="f9").poll() == 1
+        assert driver.switched == ["t2"]
 
     def test_webdriver_error_yields_zero(self) -> None:
-        watcher = HotkeyWatcher(_FakeDriver([1], raise_once=True), hotkey="f9")
+        driver = _FakeDriver({"t1": [1]}, raise_in={"t1"})
+        watcher = HotkeyWatcher(driver, hotkey="f9")
         assert watcher.poll() == 0  # transient glitch → 0, retried next tick
+        assert watcher.poll() == 1
 
     def test_non_numeric_result_yields_zero(self) -> None:
-        watcher = HotkeyWatcher(_FakeDriver([None]), hotkey="f9")
+        watcher = HotkeyWatcher(_FakeDriver({"t1": [None]}), hotkey="f9")
         assert watcher.poll() == 0
 
     def test_bad_hotkey_rejected_at_construction(self) -> None:
         with pytest.raises(ValueError):
-            HotkeyWatcher(_FakeDriver([]), hotkey="ctrl+alt")
+            HotkeyWatcher(_FakeDriver({}), hotkey="ctrl+alt")

@@ -44,13 +44,16 @@ in a list, reusing one Firefox, and writes a summary across sites.
 ## The hotkey
 
 `capture/hotkey.py` provides `HotkeyWatcher`. The session loop polls it
-on a timer. Each poll runs one `execute_script` call that:
+on a timer. Each poll runs one WebDriver BiDi script call in every open
+tab that:
 
-1. installs a `keydown` listener in the current document if it is not
+1. installs a `keydown` listener in that tab's document if it is not
    there yet (so it is re-installed after every navigation), and
 2. reads and resets a counter of hotkey presses.
 
-When the count is non-zero, the session runs an audit. The key is matched
+When a count is non-zero, the session runs an audit of that tab. A press
+in a tab other than the one the driver is on (a link that opened a new
+tab, or the first tab was closed) switches the driver to that tab first. The key is matched
 by `KeyboardEvent.code`, so it works the same on every keyboard layout,
 and modifiers must match exactly (`ctrl+alt+shift+a` does not fire on
 `ctrl+alt+a`). Reading the counter uses only the WebDriver channel, so
