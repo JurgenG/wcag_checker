@@ -182,7 +182,22 @@ class TestNormalizeResults:
                 }
             ]
         }
-        assert normalize_results(results, URL)[0].selector == "iframe#f button.go"
+        assert normalize_results(results, URL)[0].selector == "iframe#f >>> button.go"
+
+    def test_shadow_dom_target_joined(self) -> None:
+        results = {
+            "violations": [
+                {
+                    "id": "x",
+                    "impact": "serious",
+                    "tags": ["wcag143"],
+                    "help": "h",
+                    "helpUrl": "u",
+                    "nodes": [{"target": [["my-widget", "button.go"]]}],
+                }
+            ]
+        }
+        assert normalize_results(results, URL)[0].selector == "my-widget >>> button.go"
 
     def test_empty_results_yield_no_findings(self) -> None:
         assert normalize_results({}, URL) == []

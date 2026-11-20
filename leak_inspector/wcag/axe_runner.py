@@ -266,16 +266,31 @@ def _impact_to_severity(impact: object) -> Severity:
     return "error" if impact in _ERROR_IMPACTS else "warning"
 
 
-def _node_selector(node: dict[str, Any]) -> str | None:
-    """Return a CSS selector for an axe node's ``target``, or None.
+#: Marks a frame or shadow-DOM boundary in a reported selector. Not valid
+#: CSS on purpose: no single CSS selector can reach across that boundary,
+#: so a joined string must not pass for one.
+_BOUNDARY = " >>> "
 
-    axe's ``target`` is a list of selectors that descend through nested
-    frames; they are joined so the finding points at the element even
-    across a frame boundary.
+
+def _node_selector(node: dict[str, Any]) -> str | None:
+    """Return a selector for an axe node's ``target``, or None.
+
+    axe's ``target`` lists one selector per frame, outermost first; a part
+    that is itself a list is a path through shadow roots. A plain
+    single-part target is returned as the CSS selector it is. Parts across
+    a frame or shadow boundary are joined with :data:`_BOUNDARY`
+    (e.g. ``iframe#map >>> button``), so the reader sees where the element
+    lives; such a selector matches nothing with ``querySelector``, so no
+    element screenshot is attempted for it.
     """
     target = node.get("target")
     if isinstance(target, (list, tuple)) and target:
-        return " ".join(str(part) for part in target)
+        return _BOUNDARY.join(
+            _BOUNDARY.join(str(p) for p in part)
+            if isinstance(part, (list, tuple))
+            else str(part)
+            for part in target
+        )
     return None
 
 
