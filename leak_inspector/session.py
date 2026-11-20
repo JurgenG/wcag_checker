@@ -223,6 +223,7 @@ def run_session(
     width: int | None = None,
     poll_interval: float = DEFAULT_POLL_INTERVAL,
     on_audit: Callable[[str, int], None] | None = None,
+    on_error: Callable[[str, Exception], None] | None = None,
     hotkey: str = DEFAULT_HOTKEY,
     formats: tuple[str, ...] = DEFAULT_FORMATS,
     lang: str = SOURCE_LANG,
@@ -234,7 +235,9 @@ def run_session(
     each press, saving a PNG of every flagged element to
     ``<output_dir>/screenshots/`` as evidence. ``on_audit`` is called after
     each audit with the URL and finding count (the CLI uses it to confirm
-    each press). Blocks until the operator closes the window, then writes
+    each press). An audit that fails is skipped and reported through
+    ``on_error`` with the URL and exception, and the session continues.
+    Blocks until the operator closes the window (or presses Ctrl+C), then writes
     the reports to ``output_dir`` and returns a :class:`SessionResult`.
     ``headless`` runs without a visible window (a real desktop is still
     recommended for accurate focus behaviour). ``width``, if given, resizes
@@ -273,6 +276,7 @@ def run_session(
             audit_fn=_audit,
             poll_fn=watcher.poll,
             on_audit=on_audit,
+            on_error=on_error,
         )
 
     generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -404,6 +408,7 @@ def _run_audit_loop(
     audit_fn: AuditFn,
     poll_fn: Callable[[], int],
     on_audit: Callable[[str, int], None] | None = None,
+    on_error: Callable[[str, Exception], None] | None = None,
 ) -> tuple[list[Finding], list[str]]:
     """Audit whenever the hotkey poll reports presses, until the window closes.
 
@@ -412,22 +417,34 @@ def _run_audit_loop(
     of presses since the last poll); a non-zero result triggers one audit
     of the current page via ``audit_fn``, records the URL once, and calls
     ``on_audit`` with the URL and finding count so the caller can give the
-    operator live feedback. Returns the accumulated findings and the
+    operator live feedback. An audit that raises is skipped — that page
+    contributes nothing — and ``on_error`` is called with the URL and the
+    exception; the session continues. Ctrl+C (``KeyboardInterrupt``) ends
+    the loop like closing the window. Either way the earlier pages'
+    findings are kept. Returns the accumulated findings and the
     first-seen-ordered audited URLs.
     """
     findings: list[Finding] = []
     audited_urls: list[str] = []
-    while _window_open(driver):
-        if poll_fn():
+    try:
+        while _window_open(driver):
+            if not poll_fn():
+                time.sleep(poll_interval)
+                continue
             url = _safe_current_url(driver)
-            new_findings = audit_fn(driver, url)
+            try:
+                new_findings = audit_fn(driver, url)
+            except Exception as exc:  # noqa: BLE001 - one page must not lose the session
+                if on_error is not None:
+                    on_error(url, exc)
+                continue
             findings.extend(new_findings)
             if url and url not in audited_urls:
                 audited_urls.append(url)
             if on_audit is not None:
                 on_audit(url, len(new_findings))
-        else:
-            time.sleep(poll_interval)
+    except KeyboardInterrupt:
+        pass
     return findings, audited_urls
 
 

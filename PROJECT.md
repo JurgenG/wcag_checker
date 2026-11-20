@@ -31,8 +31,10 @@ Only the findings, screenshots and reading view are stored.
 3. On each page worth checking, the operator presses the audit hotkey
    (`F9` by default). The tool audits the live page, tags every finding
    with the page URL, captures a screenshot per flagged element, and
-   keeps the results in memory.
-4. Closing the Firefox window ends the session; the reports are written
+   keeps the results in memory. If an audit fails, the terminal says so
+   and the session continues; earlier results are kept.
+4. Closing the Firefox window (or pressing Ctrl+C in the terminal) ends
+   the session; the reports are written
    to `<out>/<host>/` with a `YYYYMMDDHHMM_` prefix on each filename.
 
 `--once` runs steps 1, 3 and 4 automatically for a single page, after

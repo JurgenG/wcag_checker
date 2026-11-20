@@ -100,6 +100,10 @@ MESSAGES: dict[str, str] = {
         "bevestigd. Sluit het venster als je klaar bent."
     ),
     "audited {url} — {count} finding(s)": "geauditeerd: {url} — {count} bevinding(en)",
+    "audit of {url} failed ({reason}); press {combo} to try again.": (
+        "audit van {url} mislukt ({reason}); druk op {combo} om het opnieuw "
+        "te proberen."
+    ),
     "Audited {pages} page(s); {count} finding(s).": (
         "{pages} pagina('s) geauditeerd; {count} bevinding(en)."
     ),

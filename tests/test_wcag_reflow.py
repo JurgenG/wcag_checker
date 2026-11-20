@@ -64,11 +64,15 @@ class TestCheckReflow:
     def test_no_finding_when_page_fits(self) -> None:
         assert check_reflow(_FakeDriver(scroll_width=320), "https://x/a") == []
 
-    def test_sets_320_then_restores_original_viewport(self) -> None:
+    def test_sets_320_then_resets_viewport_to_follow_window(self) -> None:
         driver = _FakeDriver(scroll_width=900, inner=1280)
         check_reflow(driver, "https://x/a")
-        widths = [v["width"] for v in driver.browsing_context.calls]
-        assert widths == [REFLOW_WIDTH, 1280]  # measured at 320, then restored
+        # Reset with None (sent as null), never an explicit size: a pinned
+        # size would stop the page following later window resizes.
+        assert driver.browsing_context.calls == [
+            {"width": REFLOW_WIDTH, "height": 800},
+            None,
+        ]
 
     def test_returns_empty_when_bidi_unavailable(self) -> None:
         class _NoBidi:
