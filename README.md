@@ -41,7 +41,7 @@ wcag-batch urls.txt
 wcag-batch bulk-tool/datasets/publiq/domains.csv --limit 20
 ```
 
-Audits every URL in a file, one after the other, in one Firefox window. The file contains either one URL per line, or two comma-separated columns such as `name,website` (the name then labels the site in the summary). Lines starting with `#` and blank lines are skipped. A site that cannot be reached is recorded as failed and the run continues. Example lists are in `bulk-tool/datasets/`.
+Audits every URL in a file, one after the other, in one Firefox window. The file contains either one URL per line, or two comma-separated columns such as `name,website` (the name then labels the site in the summary). Lines starting with `#` and blank lines are skipped. A site that cannot be reached is recorded as failed and the run continues; if Firefox itself crashes, a new one is started for the next site. Example lists are in `bulk-tool/datasets/`.
 
 ### Options
 
@@ -100,7 +100,7 @@ Always written:
 | `manual-checklist.md` | Step-by-step review questions for the 46 A + AA criteria that need human judgement, for every audited page. |
 | `screenshots/` | One PNG per flagged element, with the element outlined. |
 
-`wcag-batch` writes one folder per site (`runs/<site>/report.html`, …) plus `runs/summary.html`, `summary.md` and `summary.json` with one row per site linking to its report.
+`wcag-batch` writes one folder per site (`runs/<site>/report.html`, …) plus `runs/summary.html`, `summary.md` and `summary.json` with one row per site, linking to its HTML report when `html` is among the formats. The summary is updated after every site, so a run you stop early still has one.
 
 ### Reading the results
 

@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import json
 
+from selenium.common.exceptions import WebDriverException
+
 from leak_inspector import batch
 from leak_inspector.batch import (
     SiteResult,
@@ -99,25 +101,25 @@ def _urls(*items: str) -> list[tuple[str | None, str]]:
 class _FakeDriver:
     def __init__(self) -> None:
         self.last = ""
+        self.dead = False
 
     def get(self, url: str) -> None:
         self.last = url
+
+    @property
+    def window_handles(self) -> list[str]:
+        if self.dead:
+            raise WebDriverException("invalid session id")
+        return ["w1"]
 
 
 class _FakeLaunched:
     def __init__(self, driver) -> None:
         self.driver = driver
+        self.closed = False
 
-
-class _FakeDriverCM:
-    def __init__(self, driver) -> None:
-        self._driver = driver
-
-    def __enter__(self):
-        return _FakeLaunched(self._driver)
-
-    def __exit__(self, *exc) -> bool:
-        return False
+    def close(self) -> None:
+        self.closed = True
 
 
 class TestRunBatch:
@@ -125,7 +127,7 @@ class TestRunBatch:
         monkeypatch.setattr(
             batch,
             "launch_driver",
-            lambda *, headless=False, width=None, lang=None: _FakeDriverCM(_FakeDriver()),
+            lambda *, headless=False, width=None, lang=None: _FakeLaunched(_FakeDriver()),
         )
         monkeypatch.setattr(batch, "wait_until_settled", lambda driver: driver.last)
         monkeypatch.setattr(batch, "capture_text_view", lambda driver, url: None)
@@ -174,7 +176,7 @@ class TestRunBatch:
         monkeypatch.setattr(
             batch,
             "launch_driver",
-            lambda *, headless=False, width=None, lang=None: _FakeDriverCM(_FakeDriver()),
+            lambda *, headless=False, width=None, lang=None: _FakeLaunched(_FakeDriver()),
         )
         monkeypatch.setattr(batch, "wait_until_settled", lambda driver: driver.last)
         monkeypatch.setattr(batch, "capture_text_view", lambda driver, url: None)
@@ -226,6 +228,57 @@ class TestRunBatch:
         )
         assert len(result.sites) == 2
 
+    def test_dead_browser_is_relaunched_for_the_next_site(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        self._patch(monkeypatch)
+        launches: list[_FakeLaunched] = []
+
+        def launch(*, headless=False, width=None, lang=None):
+            launches.append(_FakeLaunched(_FakeDriver()))
+            return launches[-1]
+
+        def crashing_audit(driver, url, screenshot_dir, **kw):
+            if "crash" in url:
+                driver.dead = True  # the browser dies on this site
+                raise WebDriverException("browser crashed")
+            return [_finding("error")]
+
+        monkeypatch.setattr(batch, "launch_driver", launch)
+        monkeypatch.setattr(batch, "audit_page", crashing_audit)
+        result = run_batch(
+            _urls("https://crash.be", "https://a.be", "https://b.be"), tmp_path
+        )
+        assert [s.status for s in result.sites] == ["failed", "audited", "audited"]
+        assert len(launches) == 2  # one relaunch after the crash
+        assert all(launched.closed for launched in launches)
+
+    def test_summary_is_rewritten_after_each_site(self, monkeypatch, tmp_path) -> None:
+        self._patch(monkeypatch)
+        seen: list[int] = []
+
+        def audit_then_read_summary(driver, url, screenshot_dir, **kw):
+            data = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+            seen.append(data["totals"]["sites"])
+            return []
+
+        monkeypatch.setattr(batch, "audit_page", audit_then_read_summary)
+        run_batch(_urls("https://a.be", "https://b.be"), tmp_path)
+        # The summary on disk already covers the finished sites while the
+        # next one is being audited — an interrupted run keeps it.
+        assert seen == [0, 1]
+
+    def test_summary_links_only_written_html_reports(
+        self, monkeypatch, tmp_path
+    ) -> None:
+        self._patch(monkeypatch)
+        result = run_batch(_urls("https://a.be"), tmp_path, formats=("json",))
+        assert result.sites[0].report is None
+        data = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+        assert data["sites"][0]["report"] is None
+        assert "report.html" not in (tmp_path / "summary.md").read_text(encoding="utf-8")
+        assert "report.html" not in (tmp_path / "summary.html").read_text(encoding="utf-8")
+
     def test_summary_files_written_with_totals(self, monkeypatch, tmp_path) -> None:
         self._patch(monkeypatch)
         run_batch(_urls("https://a.be", "https://boom.be"), tmp_path, source="list.csv")
@@ -239,14 +292,15 @@ class TestRunBatch:
 class TestSummaryRendering:
     def _sites(self) -> list[SiteResult]:
         return [
-            SiteResult("https://a.be", "a.be", None, "audited", None, 2, 1, 5, 3),
+            SiteResult("https://a.be", "a.be", None, "audited", None, 2, 1, 5, 3,
+                       "a.be/report.html"),
             SiteResult("https://b.be", "b.be", None, "failed", "Timeout: boom", 0, 0, 0, 0),
         ]
 
     def test_named_site_uses_name_as_label(self) -> None:
         sites = [
             SiteResult("https://aalst.be", "aalst.be", "Aalst", "audited",
-                       None, 1, 0, 2, 1),
+                       None, 1, 0, 2, 1, "aalst.be/report.html"),
         ]
         md = render_summary_markdown(sites)
         assert "[Aalst](aalst.be/report.html)" in md

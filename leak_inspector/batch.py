@@ -23,12 +23,15 @@ and blank lines skipped) using the same one-shot flow as
 axe-core plus the keyboard/focus checks, and capture per-finding element
 screenshots. One Firefox is reused across the whole list; a site that
 fails (timeout, crash, no axe injection) is recorded and the run
-continues.
+continues. When the browser itself has died, a fresh one is launched
+before the next site.
 
 Each site gets its own subdirectory of the output directory with the full
 report set (via :func:`.session.write_reports`); an aggregate
 ``summary.{json,md,html}`` at the top level carries one row per site with
-its finding counts or its failure. The rendering helpers are pure
+its finding counts or its failure. The summary is rewritten after every
+site, so an interrupted run still leaves one covering the sites done so
+far. The rendering helpers are pure
 (``list[SiteResult]`` in, strings out) and unit-tested; :func:`run_batch`
 owns the live browser.
 
@@ -51,6 +54,7 @@ from .i18n import N_, SOURCE_LANG, tr
 from .session import (
     DEFAULT_FORMATS,
     SCREENSHOT_DIRNAME,
+    _window_open,
     audit_page,
     capture_text_view,
     domain_slug,
@@ -69,6 +73,9 @@ class SiteResult:
     audited site ``error`` is ``None`` and the counts summarize its
     findings. ``slug`` is the site's output subdirectory name; ``name`` is
     the optional display label from a 2-column list (else ``None``).
+    ``report`` is the site's HTML report path relative to the batch output
+    directory (e.g. ``a.be/report.html``), or ``None`` when no HTML report
+    was written (a failed site, or ``html`` not among the formats).
     """
 
     url: str
@@ -80,6 +87,7 @@ class SiteResult:
     warning_count: int
     needs_review_count: int
     criteria_with_findings: int
+    report: str | None = None
 
 
 @dataclass(frozen=True)
@@ -173,8 +181,12 @@ def run_batch(
     per-site report format(s); ``width``, if given, resizes the window to
     that pixel width so every site is audited at a responsive/mobile
     layout. ``lang`` is the language of the reports and the summary.
-    Returns a :class:`BatchResult`; the per-site reports and the
-    ``summary.*`` files are written under ``output_dir``.
+    Before each site the browser is checked; if it has died (crash, killed
+    geckodriver) a fresh one is launched, so one crash does not fail every
+    remaining site. ``summary.*`` is written before the first site and
+    rewritten after each one, so an interrupted run keeps a summary of
+    what it finished. Returns a :class:`BatchResult`; the per-site reports
+    and the ``summary.*`` files are written under ``output_dir``.
     """
     out = Path(output_dir)
     selected = urls if limit is None else urls[:limit]
@@ -182,19 +194,24 @@ def run_batch(
 
     taken: set[str] = set()
     sites: list[SiteResult] = []
-    with launch_driver(headless=headless, width=width, lang=lang) as launched:
-        driver = launched.driver
+    summary_kw = {"generated_at": generated_at, "source": source, "lang": lang}
+    written = write_summary(out, sites, **summary_kw)
+    launched = launch_driver(headless=headless, width=width, lang=lang)
+    try:
         for name, url in selected:
+            if not _window_open(launched.driver):
+                launched.close()
+                launched = launch_driver(headless=headless, width=width, lang=lang)
             slug = site_slug(url, taken)
             sites.append(
                 _audit_site(
-                    driver, name, url, slug, out / slug, generated_at, formats, lang
+                    launched.driver, name, url, slug, out / slug, generated_at,
+                    formats, lang,
                 )
             )
-
-    written = write_summary(
-        out, sites, generated_at=generated_at, source=source, lang=lang
-    )
+            written = write_summary(out, sites, **summary_kw)
+    finally:
+        launched.close()
     return BatchResult(
         sites=tuple(sites),
         output_dir=out,
@@ -226,7 +243,7 @@ def _audit_site(
             driver, audited_url, site_dir / SCREENSHOT_DIRNAME, lang=lang
         )
         view = capture_text_view(driver, audited_url)
-        write_reports(
+        reports = write_reports(
             site_dir,
             findings,
             [audited_url],
@@ -247,6 +264,7 @@ def _audit_site(
             warning_count=sev.findings_by_severity["warning"],
             needs_review_count=sev.findings_by_severity["needs-review"],
             criteria_with_findings=sev.criteria_with_findings,
+            report=f"{slug}/report.html" if "report.html" in reports else None,
         )
     except Exception as exc:  # noqa: BLE001 - one bad site must not stop the batch
         return SiteResult(
@@ -366,7 +384,7 @@ def render_summary_json(
                 "slug": s.slug,
                 "status": s.status,
                 "error": s.error,
-                "report": f"{s.slug}/report.html" if s.status == "audited" else None,
+                "report": s.report,
                 "findings": {
                     "error": s.error_count,
                     "warning": s.warning_count,
@@ -405,8 +423,9 @@ def render_summary_markdown(
     for s in sites:
         detail = f"<br>{s.url}" if s.name else ""
         if s.status == "audited":
+            label = f"[{_site_label(s)}]({s.report})" if s.report else _site_label(s)
             lines.append(
-                f"| [{_site_label(s)}]({s.slug}/report.html){detail} "
+                f"| {label}{detail} "
                 f"| {tr(lang, 'audited')} "
                 f"| {s.criteria_with_findings} | {s.error_count} "
                 f"| {s.warning_count} | {s.needs_review_count} |"
@@ -438,8 +457,10 @@ def render_summary_html(
         )
         if s.status == "audited":
             link = (
-                f"<a href='{html.escape(s.slug, quote=True)}/report.html'>"
+                f"<a href='{html.escape(s.report, quote=True)}'>"
                 f"{html.escape(_site_label(s))}</a>"
+                if s.report
+                else html.escape(_site_label(s))
             )
             rows.append(
                 "<tr>"
