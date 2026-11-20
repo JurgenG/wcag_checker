@@ -29,7 +29,9 @@ Only the findings, screenshots and reading view are stored.
 2. The operator browses: clicks through flows, opens menus, handles
    banners, logs in.
 3. On each page worth checking, the operator presses the audit hotkey
-   (`F9` by default). The tool audits the live page, tags every finding
+   (`F9` by default). While the audit runs, the tab title is prefixed
+   with ⏳ (left alone when the page has no title, so the 2.4.2 check
+   still sees it empty). The tool audits the live page, tags every finding
    with the page URL, captures a screenshot per flagged element, and
    keeps the results in memory. If an audit fails, the terminal says so
    and the session continues; earlier results are kept.

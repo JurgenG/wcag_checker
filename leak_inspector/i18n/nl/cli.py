@@ -99,6 +99,7 @@ MESSAGES: dict[str, str] = {
         "en druk op {combo} om ze te auditen. Elke audit wordt hieronder "
         "bevestigd. Sluit het venster als je klaar bent."
     ),
+    "auditing {url}…": "bezig met audit van {url}…",
     "audited {url} — {count} finding(s)": "geauditeerd: {url} — {count} bevinding(en)",
     "audit of {url} failed ({reason}); press {combo} to try again.": (
         "audit van {url} mislukt ({reason}); druk op {combo} om het opnieuw "

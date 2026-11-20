@@ -207,6 +207,58 @@ class TestRunAuditLoop:
         assert urls == ["https://x/a"]
 
 
+class _TitleDriver:
+    """Fake driver that runs the busy-title scripts against ``title``."""
+
+    def __init__(self, title: str) -> None:
+        self.title = title
+
+    def execute_script(self, script: str, *args):
+        from leak_inspector import session
+
+        if script == session._MARK_TITLE_JS:
+            if not self.title:
+                return None
+            original, self.title = self.title, args[0] + self.title
+            return original
+        if script == session._RESTORE_TITLE_JS and self.title == args[0] + args[1]:
+            self.title = args[1]
+        return None
+
+
+class TestBusyTitle:
+    def test_marks_title_during_audit_and_restores_after(self) -> None:
+        from leak_inspector.session import BUSY_MARK, _busy_title
+
+        driver = _TitleDriver("Home")
+        with _busy_title(driver):
+            assert driver.title == BUSY_MARK + "Home"
+        assert driver.title == "Home"
+
+    def test_restored_when_audit_raises(self) -> None:
+        from leak_inspector.session import _busy_title
+
+        driver = _TitleDriver("Home")
+        with pytest.raises(RuntimeError), _busy_title(driver):
+            raise RuntimeError("boom")
+        assert driver.title == "Home"
+
+    def test_empty_title_left_empty(self) -> None:
+        from leak_inspector.session import _busy_title
+
+        driver = _TitleDriver("")
+        with _busy_title(driver):
+            assert driver.title == ""  # a prefix would mask a 2.4.2 failure
+
+    def test_title_changed_by_page_is_kept(self) -> None:
+        from leak_inspector.session import _busy_title
+
+        driver = _TitleDriver("Home")
+        with _busy_title(driver):
+            driver.title = "Next page"
+        assert driver.title == "Next page"
+
+
 class TestAuditPage:
     def test_captures_evidence_when_dir_given(self, monkeypatch) -> None:
         from leak_inspector import session
@@ -390,11 +442,12 @@ class TestCli:
 
         def fake_run(
             url, out, *, headless, width=None, on_audit=None, on_error=None,
-            hotkey=None, formats=None, lang=None,
+            on_start=None, hotkey=None, formats=None, lang=None,
         ):
             calls.update(
                 url=url, out=out, headless=headless, width=width,
-                on_audit=on_audit, on_error=on_error, hotkey=hotkey,
+                on_audit=on_audit, on_error=on_error, on_start=on_start,
+                hotkey=hotkey,
                 formats=formats, lang=lang,
             )
             return SessionResult(
@@ -413,6 +466,7 @@ class TestCli:
         assert calls["width"] is None  # not given → default kept
         assert callable(calls["on_audit"])  # CLI wires the per-audit feedback
         assert callable(calls["on_error"])  # ...and the failed-audit notice
+        assert callable(calls["on_start"])  # ...and the audit-started line
         assert calls["hotkey"] == "f9"  # default passed through
         assert calls["formats"] == ("md", "json")  # parsed and passed through
         assert calls["lang"] == "nl"  # Dutch by default

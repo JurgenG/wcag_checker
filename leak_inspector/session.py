@@ -43,7 +43,8 @@ smoke-tested.
 from __future__ import annotations
 
 import time
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -77,6 +78,23 @@ SCREENSHOT_DIRNAME = "screenshots"
 #: How often (seconds) the main loop polls for a closed window / pending
 #: audit request when idle.
 DEFAULT_POLL_INTERVAL = 0.5
+
+#: Prefixed to the tab title while an interactive audit runs, so the
+#: operator sees in the browser's own tab and title bar that it is busy.
+BUSY_MARK = "\u23f3 "
+
+#: Prefix the title and return the original; an empty title is left alone
+#: (a prefix would hide a missing title from the 2.4.2 check).
+_MARK_TITLE_JS = (
+    "var t = document.title; if (!t) return null; "
+    "document.title = arguments[0] + t; return t;"
+)
+
+#: Restore the title only if the page did not change it meanwhile.
+_RESTORE_TITLE_JS = (
+    "if (document.title === arguments[0] + arguments[1]) "
+    "document.title = arguments[1];"
+)
 
 #: Signature of the per-page audit function the loop calls.
 AuditFn = Callable[[Any, str], list[Finding]]
@@ -225,6 +243,7 @@ def run_session(
     poll_interval: float = DEFAULT_POLL_INTERVAL,
     on_audit: Callable[[str, int], None] | None = None,
     on_error: Callable[[str, Exception], None] | None = None,
+    on_start: Callable[[str], None] | None = None,
     hotkey: str = DEFAULT_HOTKEY,
     formats: tuple[str, ...] = DEFAULT_FORMATS,
     lang: str = SOURCE_LANG,
@@ -234,7 +253,9 @@ def run_session(
     Opens Firefox on ``target_url``, installs the audit ``hotkey`` (default
     :data:`~.capture.hotkey.DEFAULT_HOTKEY`), and audits the live page on
     each press, saving a PNG of every flagged element to
-    ``<output_dir>/screenshots/`` as evidence. ``on_audit`` is called after
+    ``<output_dir>/screenshots/`` as evidence. ``on_start`` is called with
+    the URL when an audit begins; while it runs the tab title carries
+    :data:`BUSY_MARK`, removed when the audit ends. ``on_audit`` is called after
     each audit with the URL and finding count (the CLI uses it to confirm
     each press). An audit that fails is skipped and reported through
     ``on_error`` with the URL and exception, and the session continues.
@@ -259,7 +280,10 @@ def run_session(
     seen_view_urls: set[str] = set()
 
     def _audit(d: Any, u: str) -> list[Finding]:
-        page_findings = audit_page(d, u, screenshot_dir, lang=lang)
+        if on_start is not None:
+            on_start(u)
+        with _busy_title(d):
+            page_findings = audit_page(d, u, screenshot_dir, lang=lang)
         if u and u not in seen_view_urls:
             seen_view_urls.add(u)
             view = capture_text_view(d, u)
@@ -523,6 +547,25 @@ def write_reports(
     )
     written[checklist_name] = checklist_path
     return written
+
+
+@contextmanager
+def _busy_title(driver: Any) -> Iterator[None]:
+    """Show :data:`BUSY_MARK` in the tab title for the duration of the block.
+
+    Side effect: changes ``document.title`` of the live page and restores
+    it afterwards. Failures (page navigating, script blocked) are ignored:
+    the marker is a convenience and must never break an audit.
+    """
+    original = None
+    with suppress(Exception):
+        original = driver.execute_script(_MARK_TITLE_JS, BUSY_MARK)
+    try:
+        yield
+    finally:
+        if original is not None:
+            with suppress(Exception):
+                driver.execute_script(_RESTORE_TITLE_JS, BUSY_MARK, original)
 
 
 def _window_open(driver: Any) -> bool:
