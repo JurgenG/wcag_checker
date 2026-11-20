@@ -201,6 +201,10 @@ def launch_driver(
         a chosen viewport width for checking responsive/mobile layouts.
 
     ``lang``: language of the operator messages printed to stderr.
+
+    If the launch fails (Firefox cannot be provisioned or started, or the
+    resize fails), any started browser is quit and a temporary profile is
+    removed before the error is re-raised.
     """
     profile_is_temporary = profile_path is None
     if profile_is_temporary:
@@ -212,28 +216,38 @@ def launch_driver(
                 f"profile path does not exist or is not a directory: {resolved_profile}"
             )
 
-    options = _build_options(resolved_profile, headless=headless)
+    driver = None
+    try:
+        options = _build_options(resolved_profile, headless=headless)
 
-    # Auto-provision Firefox if it isn't already present. Selenium would
-    # download it implicitly inside ``Firefox(options)`` anyway, but doing
-    # it explicitly lets us warn the operator before the silent ~80 MB
-    # download and turn an offline failure into actionable guidance. The
-    # downloaded binary becomes the launch target; geckodriver still
-    # auto-provisions via Selenium's own DriverFinder.
-    if not firefox_available():
-        print(
-            tr(
-                lang,
-                "Firefox not found — downloading a private copy for capture "
-                "(~80 MB, one-time). This may take a minute…",
-            ),
-            file=sys.stderr,
-        )
-        options.binary_location = _provision_firefox(lang)
+        # Auto-provision Firefox if it isn't already present. Selenium would
+        # download it implicitly inside ``Firefox(options)`` anyway, but doing
+        # it explicitly lets us warn the operator before the silent ~80 MB
+        # download and turn an offline failure into actionable guidance. The
+        # downloaded binary becomes the launch target; geckodriver still
+        # auto-provisions via Selenium's own DriverFinder.
+        if not firefox_available():
+            print(
+                tr(
+                    lang,
+                    "Firefox not found — downloading a private copy for capture "
+                    "(~80 MB, one-time). This may take a minute…",
+                ),
+                file=sys.stderr,
+            )
+            options.binary_location = _provision_firefox(lang)
 
-    driver = Firefox(options=options)
-    if width is not None:
-        _set_window_width(driver, width, lang)
+        driver = Firefox(options=options)
+        if width is not None:
+            _set_window_width(driver, width, lang)
+    except BaseException:
+        # Nothing owns the browser or the temp profile yet; without this a
+        # failed launch leaves Firefox running or a profile dir behind.
+        if driver is not None:
+            driver.quit()
+        if profile_is_temporary:
+            shutil.rmtree(resolved_profile, ignore_errors=True)
+        raise
 
     return LaunchedDriver(
         driver=driver,

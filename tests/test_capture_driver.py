@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from leak_inspector.capture.driver import _build_options
 
 
@@ -138,3 +140,51 @@ def test_exposure_prefs_set_custom_contentblocking_category() -> None:
     cookieBehavior / trackingprotection values would be silently reset."""
     from leak_inspector.capture.driver import EXPOSURE_PREFS
     assert EXPOSURE_PREFS["browser.contentblocking.category"] == "custom"
+
+
+def test_failed_launch_removes_temp_profile(monkeypatch, tmp_path: Path) -> None:
+    from leak_inspector.capture import driver as driver_mod
+
+    profile = tmp_path / "profile"
+    monkeypatch.setattr(
+        driver_mod.tempfile, "mkdtemp", lambda prefix: (profile.mkdir(), str(profile))[1]
+    )
+    monkeypatch.setattr(driver_mod, "firefox_available", lambda: True)
+
+    def no_firefox(options):
+        raise RuntimeError("geckodriver failed to start")
+
+    monkeypatch.setattr(driver_mod, "Firefox", no_firefox)
+    with pytest.raises(RuntimeError):
+        driver_mod.launch_driver()
+    assert not profile.exists()
+
+
+def test_failed_resize_quits_firefox_and_removes_temp_profile(
+    monkeypatch, tmp_path: Path
+) -> None:
+    from leak_inspector.capture import driver as driver_mod
+
+    profile = tmp_path / "profile"
+    monkeypatch.setattr(
+        driver_mod.tempfile, "mkdtemp", lambda prefix: (profile.mkdir(), str(profile))[1]
+    )
+    monkeypatch.setattr(driver_mod, "firefox_available", lambda: True)
+
+    class _Browser(_FakeDriver):
+        quit_called = False
+
+        def __init__(self, options) -> None:
+            super().__init__()
+
+        def get_window_size(self) -> dict[str, int]:
+            raise RuntimeError("window gone")
+
+        def quit(self) -> None:
+            _Browser.quit_called = True
+
+    monkeypatch.setattr(driver_mod, "Firefox", _Browser)
+    with pytest.raises(RuntimeError):
+        driver_mod.launch_driver(width=400)
+    assert _Browser.quit_called
+    assert not profile.exists()

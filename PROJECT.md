@@ -179,6 +179,10 @@ Written on session close, per website:
 - **`manual-checklist.md`** — always written.
 - **`screenshots/`** — always written.
 
+A finding's selector is a CSS selector. For an element inside an iframe or
+a shadow root, the parts are joined with ` >>> ` at each boundary (for
+example `iframe#map >>> button`); such elements get no screenshot.
+
 Findings are grouped by WCAG success criterion and ordered by priority
 band (P1–P4). Severity is `error`, `warning` or `needs-review`; axe-core's
 grading is kept as `impact`. Every report opens with the priority
