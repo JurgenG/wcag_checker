@@ -17,20 +17,25 @@
 
 """Poll-based audit hotkey.
 
-Lets the operator trigger an audit by pressing a keyboard shortcut in the
-browsed page. Each poll runs one ``execute_script`` that (1) installs a
-``keydown`` listener in the page — once per document — which increments a
-counter when the hotkey matches, and (2) reads and clears that counter.
-The session loop polls on a timer and audits whenever the count is
-non-zero.
+Lets the operator trigger an audit by pressing a keyboard shortcut in any
+open tab. Each poll runs one script per tab (WebDriver BiDi
+``script.callFunction``, targeted at the tab's browsing context, so no
+tab is switched or focused) that (1) installs a ``keydown`` listener in
+the page — once per document — which increments a counter when the
+hotkey matches, and (2) reads and clears that counter. When a tab other
+than the driver's current one reports a press, the watcher switches the
+driver to that tab, so the audit runs where the operator pressed the key
+— including tabs opened by ``target="_blank"`` links, and after the
+first tab was closed. The session loop polls on a timer and audits
+whenever the count is non-zero.
 
 Why polling instead of a network signal: the previous design had the
 in-page handler ``fetch()`` a sentinel host that a BiDi network event
 caught. But a page's ``Content-Security-Policy: connect-src`` blocks that
 fetch before it is sent, so the signal never arrived on any site with a
-CSP — which is most real sites. Reading a counter via ``execute_script``
-touches no network and no ``<script>``/``eval``, so CSP does not affect
-it, and re-installing on each fresh document handles navigation.
+CSP — which is most real sites. Reading a counter via a WebDriver script
+call touches no network and no ``<script>``/``eval``, so CSP does not
+affect it, and re-installing on each fresh document handles navigation.
 
 The hotkey is a ``+``-separated spec (e.g. ``ctrl+alt+shift+a``, ``f9``):
 modifiers plus exactly one key, matched by ``KeyboardEvent.code`` so the
@@ -115,18 +120,18 @@ def format_hotkey(spec: str) -> str:
 
 
 def poll_script(spec: str) -> str:
-    """Build the per-tick ``execute_script`` body for ``spec``.
+    """Build the per-tick, per-tab poll function for ``spec``.
 
     The script installs the keydown listener once per document (guarded by
     a window flag, so a fresh document after navigation reinstalls it) and
     returns the number of matching presses since the previous poll,
-    clearing the counter. Building it validates the spec.
+    clearing the counter. The result is a BiDi function declaration
+    (``() => {...}``). Building it validates the spec.
     """
     return _POLL_TEMPLATE.replace("__CONDITION__", hotkey_condition(spec))
 
 
-#: ``execute_script`` wraps this in a function body, so ``return`` is valid.
-_POLL_TEMPLATE = """
+_POLL_TEMPLATE = """() => {
 if (!window.__wcagHotkeyInstalled) {
   window.__wcagHotkeyInstalled = true;
   window.__wcagHotkeyPending = 0;
@@ -140,17 +145,18 @@ if (!window.__wcagHotkeyInstalled) {
 var n = window.__wcagHotkeyPending || 0;
 window.__wcagHotkeyPending = 0;
 return n;
-"""
+}"""
 
 
 class HotkeyWatcher:
-    """Install the audit hotkey in the live page and report presses.
+    """Install the audit hotkey in every open tab and report presses.
 
-    Construct with the driver and a hotkey spec (validated up front, raising
-    :class:`ValueError` on a bad one), then call :meth:`poll` on a timer.
-    Each :meth:`poll` ensures the listener is installed in the current
-    document and returns how many times the hotkey was pressed since the
-    last poll.
+    Construct with the driver (BiDi enabled) and a hotkey spec (validated
+    up front, raising :class:`ValueError` on a bad one), then call
+    :meth:`poll` on a timer. Each :meth:`poll` ensures the listener is
+    installed in every tab's current document and returns how many times
+    the hotkey was pressed since the last poll, switching the driver to
+    the tab where it was pressed.
     """
 
     def __init__(self, driver: Any, *, hotkey: str = DEFAULT_HOTKEY) -> None:
@@ -160,16 +166,42 @@ class HotkeyWatcher:
     def poll(self) -> int:
         """Return the number of hotkey presses since the last poll.
 
-        Runs one ``execute_script`` (installing the listener if the current
-        document doesn't have it yet). Returns 0 on any transient WebDriver
-        error — e.g. mid-navigation — so the caller just tries again next
-        tick.
+        Polls every open tab (installing the listener where the document
+        doesn't have it yet). When presses come from a tab other than the
+        driver's current one, switches the driver to that tab (it is
+        already in front: the operator just typed in it). With presses in
+        several tabs in one tick, the current tab wins, else the last one;
+        the others' presses are dropped. A tab that errors — e.g.
+        mid-navigation — counts as 0 and is retried next tick.
         """
         try:
-            count = self._driver.execute_script(self._script)
+            handles = self._driver.window_handles
         except WebDriverException:
             return 0
-        return int(count) if isinstance(count, (int, float)) else 0
+        try:
+            current = self._driver.current_window_handle
+        except WebDriverException:
+            current = None  # the driver's tab was closed
+        counts = {handle: self._presses(handle) for handle in handles}
+        pressed = [handle for handle, n in counts.items() if n]
+        if not pressed:
+            return 0
+        target = current if current in pressed else pressed[-1]
+        if target != current:
+            try:
+                self._driver.switch_to.window(target)
+            except WebDriverException:
+                return 0
+        return counts[target]
+
+    def _presses(self, handle: str) -> int:
+        """Run the poll function in tab ``handle``; return its press count."""
+        try:
+            result = self._driver.script.execute(self._script, context_id=handle)
+        except WebDriverException:
+            return 0
+        value = result.get("value") if isinstance(result, dict) else None
+        return int(value) if isinstance(value, (int, float)) else 0
 
 
 __all__ = [

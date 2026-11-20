@@ -21,9 +21,10 @@ criterion the underlying engine cannot actually decide — an honest
 - **Capture** (`leak_inspector/capture/`)
   - `driver.py` — Selenium drives Firefox via geckodriver over WebDriver
     BiDi. Downloads a private Firefox when none is installed.
-  - `hotkey.py` — `HotkeyWatcher`: each poll runs one `execute_script`
-    that installs a `keydown` listener once per document and reads/clears
-    a press counter. Default `F9` (`--hotkey`), matched by
+  - `hotkey.py` — `HotkeyWatcher`: each poll runs one BiDi script call
+    per open tab that installs a `keydown` listener once per document and
+    reads/clears a press counter; a press in another tab switches the
+    driver there. Default `F9` (`--hotkey`), matched by
     `KeyboardEvent.code` (layout-independent). The trigger must stay
     CSP-immune: never signal via a page-originated network request
     (`connect-src` blocks it).
