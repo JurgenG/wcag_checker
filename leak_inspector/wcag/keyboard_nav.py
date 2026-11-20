@@ -133,6 +133,10 @@ for(const el of focusable()){
   const before=snap(el);
   try{ el.focus({preventScroll:true}); }catch(e){}
   const gotFocus=document.activeElement===el;
+  // A transitioned focus style still reads its start value right after
+  // focus(); finish() jumps it to the end state the user actually sees.
+  // (finish() throws on an infinite animation; skip just that one.)
+  for(const a of el.getAnimations()){ try{ a.finish(); }catch(e){} }
   const after=snap(el);
   let obscured=false;
   if(gotFocus){

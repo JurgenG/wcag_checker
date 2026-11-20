@@ -41,7 +41,7 @@ wcag-batch urls.txt
 wcag-batch bulk-tool/datasets/publiq/domains.csv --limit 20
 ```
 
-Audits every URL in a file, one after the other, in one Firefox window. The file contains either one URL per line, or two comma-separated columns such as `name,website` (the name then labels the site in the summary). Lines starting with `#` and blank lines are skipped. A site that cannot be reached is recorded as failed and the run continues; if Firefox itself crashes, a new one is started for the next site. Example lists are in `bulk-tool/datasets/`.
+Audits every URL in a file, one after the other, in one Firefox window. The file contains either one URL per line, or two comma-separated columns such as `name,website` (the name then labels the site in the summary). Lines starting with `#` and blank lines are skipped. A site that cannot be reached, or does not finish loading within 30 seconds, is recorded as failed and the run continues; if Firefox itself crashes, a new one is started for the next site. Example lists are in `bulk-tool/datasets/`.
 
 ### Options
 
